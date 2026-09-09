@@ -2,6 +2,8 @@
 
 A lightweight FOV changer for the new 64-bit version of Call of Duty: Modern Warfare 3 (2011) (`iw5mp.exe`).
 
+**WORKS AFTER THE MW3 UPDATE FROM [3 September 2026](https://steamdb.info/patchnotes/24615914/)**
+
 ## Features
 
 - Change the in-game FOV from 40 to 120
