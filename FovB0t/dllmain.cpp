@@ -8,6 +8,8 @@
 #include "imgui_impl_dx9.h"
 #include "imgui_impl_win32.h"
 
+#include "features/fov.h"
+
 #pragma comment(lib, "d3d9.lib")
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
@@ -48,36 +50,7 @@ static bool g_menuOpen = true;
 
 static float g_fovValue = 65.0f;
 
-constexpr std::uintptr_t kFovPointerRva = 0x7D2688;
 constexpr std::uintptr_t kMouseInputRva = 0xCFB60;
-
-
-float* GetFovAddress()
-{
-    const auto gameBase = reinterpret_cast<std::uintptr_t>(
-        GetModuleHandleA(nullptr)
-        );
-
-    if (!gameBase)
-    {
-        return nullptr;
-    }
-
-    const auto cgFovObject =
-        *reinterpret_cast<std::uintptr_t*>(
-            gameBase + kFovPointerRva
-            );
-
-    if (!cgFovObject)
-    {
-        return nullptr;
-    }
-
-    return reinterpret_cast<float*>(
-        cgFovObject + 0x10
-        );
-}
-
 
 bool ShouldIgnoreMessage(UINT message)
 {
@@ -338,10 +311,7 @@ void RenderMenu()
         "%.1f"
     ))
     {
-        if (float* fov = GetFovAddress())
-        {
-            *fov = g_fovValue;
-        }
+        SetFov(g_fovValue);
     }
 
     if (ImGui::Button(
@@ -349,11 +319,7 @@ void RenderMenu()
     ))
     {
         g_fovValue = 65.0f;
-
-        if (float* fov = GetFovAddress())
-        {
-            *fov = g_fovValue;
-        }
+        ResetFov();
     }
 
     ImGui::Spacing();
