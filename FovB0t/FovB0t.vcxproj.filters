@@ -24,6 +24,9 @@
     <ClInclude Include="features\fov.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ui\menu.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -66,6 +69,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="features\fov.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui\menu.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

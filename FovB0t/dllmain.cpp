@@ -9,6 +9,7 @@
 #include "imgui_impl_win32.h"
 
 #include "features/fov.h"
+#include "ui/menu.h"
 
 #pragma comment(lib, "d3d9.lib")
 
@@ -46,9 +47,9 @@ static HWND g_gameWindow = nullptr;
 static WNDPROC g_originalWndProc = nullptr;
 
 static bool g_imguiInitialized = false;
-static bool g_menuOpen = true;
+bool g_menuOpen = true;
 
-static float g_fovValue = 65.0f;
+float g_fovValue = 65.0f;
 
 constexpr std::uintptr_t kMouseInputRva = 0xCFB60;
 
@@ -279,58 +280,6 @@ void InitializeImGui(
 
     UpdateCursorState();
 }
-
-
-void RenderMenu()
-{
-    if (!g_menuOpen)
-    {
-        return;
-    }
-
-    ImGui::SetNextWindowSize(
-        ImVec2(360.0f, 180.0f),
-        ImGuiCond_FirstUseEver
-    );
-
-    ImGui::Begin(
-        "FovB0t | By: 0183",
-        nullptr,
-        ImGuiWindowFlags_NoCollapse
-    );
-
-    ImGui::Text("Camera");
-
-    ImGui::Separator();
-
-    if (ImGui::SliderFloat(
-        "FOV",
-        &g_fovValue,
-        40.0f,
-        120.0f,
-        "%.1f"
-    ))
-    {
-        SetFov(g_fovValue);
-    }
-
-    if (ImGui::Button(
-        "Reset FOV"
-    ))
-    {
-        g_fovValue = 65.0f;
-        ResetFov();
-    }
-
-    ImGui::Spacing();
-
-    ImGui::Text(
-        "INSERT - Toggle menu"
-    );
-
-    ImGui::End();
-}
-
 
 HRESULT APIENTRY HookedEndScene(
     IDirect3DDevice9* device
