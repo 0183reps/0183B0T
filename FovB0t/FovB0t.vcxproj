@@ -153,12 +153,14 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="core\input.h" />
     <ClInclude Include="features\fov.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ui\menu.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="core\input.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="features\fov.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_dx9.cpp">
