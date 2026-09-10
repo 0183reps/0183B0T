@@ -2,6 +2,10 @@
 
 #include <Windows.h>
 #include <d3d9.h>
+#include <cstdint>
+#include <intrin.h>
+#include <cstdio>
+#include <cstdarg>
 
 #include "MinHook.h"
 
@@ -44,11 +48,296 @@ extern bool g_imguiInitialized;
 extern bool g_menuOpen;
 extern float g_fovValue;
 
+constexpr std::uintptr_t kGameDevicePointerRva =
+0x264DCC0;
+
+constexpr std::uintptr_t kGameWindowHandleRva =
+0x2651230;
+
+static const char* GetRendererLogPath()
+{
+    static char logPath[MAX_PATH]{};
+
+    if (logPath[0] != '\0')
+    {
+        return logPath;
+    }
+
+    char tempPath[MAX_PATH]{};
+
+    const DWORD length =
+        GetTempPathA(
+            MAX_PATH,
+            tempPath
+        );
+
+    if (
+        length == 0 ||
+        length >= MAX_PATH
+        )
+    {
+        strcpy_s(
+            logPath,
+            "0183B0T_renderer.log"
+        );
+
+        return logPath;
+    }
+
+    sprintf_s(
+        logPath,
+        "%s0183B0T_renderer.log",
+        tempPath
+    );
+
+    return logPath;
+}
+
+static void ClearRendererLog()
+{
+    FILE* file = nullptr;
+
+    if (
+        fopen_s(
+            &file,
+            GetRendererLogPath(),
+            "w"
+        ) != 0 ||
+        !file
+        )
+    {
+        return;
+    }
+
+    fprintf(
+        file,
+        "0183B0T renderer log\n"
+    );
+
+    fclose(
+        file
+    );
+}
+
+static void LogRenderer(
+    const char* format,
+    ...
+)
+{
+    FILE* file = nullptr;
+
+    if (
+        fopen_s(
+            &file,
+            GetRendererLogPath(),
+            "a"
+        ) != 0 ||
+        !file
+        )
+    {
+        return;
+    }
+
+    SYSTEMTIME time{};
+
+    GetLocalTime(
+        &time
+    );
+
+    fprintf(
+        file,
+        "[%02u:%02u:%02u.%03u] ",
+        time.wHour,
+        time.wMinute,
+        time.wSecond,
+        time.wMilliseconds
+    );
+
+    va_list arguments;
+
+    va_start(
+        arguments,
+        format
+    );
+
+    vfprintf(
+        file,
+        format,
+        arguments
+    );
+
+    va_end(
+        arguments
+    );
+
+    fprintf(
+        file,
+        "\n"
+    );
+
+    fclose(
+        file
+    );
+}
+
+static std::uintptr_t GetGameBase()
+{
+    return reinterpret_cast<std::uintptr_t>(
+        GetModuleHandleA(nullptr)
+        );
+}
+
+static IDirect3DDevice9* GetGameDevice()
+{
+    const std::uintptr_t gameBase =
+        GetGameBase();
+
+    if (!gameBase)
+    {
+        return nullptr;
+    }
+
+    return *reinterpret_cast<IDirect3DDevice9**>(
+        gameBase +
+        kGameDevicePointerRva
+        );
+}
+
+static HWND GetGameWindow()
+{
+    const std::uintptr_t gameBase =
+        GetGameBase();
+
+    if (!gameBase)
+    {
+        return nullptr;
+    }
+
+    return *reinterpret_cast<HWND*>(
+        gameBase +
+        kGameWindowHandleRva
+        );
+}
+
+static bool IsWindowReady(
+    HWND window
+)
+{
+    if (
+        !window ||
+        !IsWindow(window) ||
+        IsIconic(window)
+        )
+    {
+        return false;
+    }
+
+    RECT clientRect{};
+
+    if (!GetClientRect(
+        window,
+        &clientRect
+    ))
+    {
+        return false;
+    }
+
+    const long width =
+        clientRect.right -
+        clientRect.left;
+
+    const long height =
+        clientRect.bottom -
+        clientRect.top;
+
+    return
+        width > 0 &&
+        height > 0;
+}
+
+static bool GetStableGameRenderer(
+    IDirect3DDevice9** device,
+    HWND* window
+)
+{
+    if (
+        !device ||
+        !window
+        )
+    {
+        return false;
+    }
+
+    IDirect3DDevice9* firstDevice =
+        GetGameDevice();
+
+    HWND firstWindow =
+        GetGameWindow();
+
+    if (
+        !firstDevice ||
+        !IsWindowReady(firstWindow)
+        )
+    {
+        return false;
+    }
+
+    Sleep(
+        100
+    );
+
+    IDirect3DDevice9* secondDevice =
+        GetGameDevice();
+
+    HWND secondWindow =
+        GetGameWindow();
+
+    if (
+        firstDevice != secondDevice ||
+        firstWindow != secondWindow
+        )
+    {
+        return false;
+    }
+
+    if (
+        !secondDevice ||
+        !IsWindowReady(secondWindow)
+        )
+    {
+        return false;
+    }
+
+    *device =
+        secondDevice;
+
+    *window =
+        secondWindow;
+
+    return true;
+}
+
 static HWND GetRenderWindow(
     IDirect3DDevice9* device
 )
 {
-    IDirect3DSwapChain9* swapChain = nullptr;
+    IDirect3DDevice9* gameDevice =
+        GetGameDevice();
+
+    HWND gameWindow =
+        GetGameWindow();
+
+    if (
+        device == gameDevice &&
+        gameWindow &&
+        IsWindow(gameWindow)
+        )
+    {
+        return gameWindow;
+    }
+
+    IDirect3DSwapChain9* swapChain =
+        nullptr;
 
     if (SUCCEEDED(
         device->GetSwapChain(
@@ -107,6 +396,61 @@ static HWND GetRenderWindow(
     return nullptr;
 }
 
+static bool IsAddressInGameModule(
+    void* address
+)
+{
+    const auto moduleBase =
+        reinterpret_cast<std::uintptr_t>(
+            GetModuleHandleA(nullptr)
+            );
+
+    if (!moduleBase)
+    {
+        return false;
+    }
+
+    const auto dosHeader =
+        reinterpret_cast<IMAGE_DOS_HEADER*>(
+            moduleBase
+            );
+
+    if (
+        !dosHeader ||
+        dosHeader->e_magic != IMAGE_DOS_SIGNATURE
+        )
+    {
+        return false;
+    }
+
+    const auto ntHeaders =
+        reinterpret_cast<IMAGE_NT_HEADERS*>(
+            moduleBase +
+            dosHeader->e_lfanew
+            );
+
+    if (
+        !ntHeaders ||
+        ntHeaders->Signature != IMAGE_NT_SIGNATURE
+        )
+    {
+        return false;
+    }
+
+    const std::uintptr_t moduleEnd =
+        moduleBase +
+        ntHeaders->OptionalHeader.SizeOfImage;
+
+    const auto targetAddress =
+        reinterpret_cast<std::uintptr_t>(
+            address
+            );
+
+    return
+        targetAddress >= moduleBase &&
+        targetAddress < moduleEnd;
+}
+
 LRESULT CALLBACK HookedWndProc(
     HWND hwnd,
     UINT message,
@@ -126,7 +470,9 @@ LRESULT CALLBACK HookedWndProc(
             lParam
         );
 
-        if (ShouldIgnoreMessage(message))
+        if (ShouldIgnoreMessage(
+            message
+        ))
         {
             return TRUE;
         }
@@ -153,7 +499,16 @@ LRESULT CALLBACK HookedWndProc(
 
 static void ShutdownImGui()
 {
-    g_imguiInitialized = false;
+    LogRenderer(
+        "ShutdownImGui: initialized=%d device=%p window=%p wndProc=%p",
+        g_imguiInitialized ? 1 : 0,
+        g_currentDevice,
+        g_gameWindow,
+        g_originalWndProc
+    );
+
+    g_imguiInitialized =
+        false;
 
     if (
         g_gameWindow &&
@@ -177,9 +532,14 @@ static void ShutdownImGui()
         ImGui::DestroyContext();
     }
 
-    g_currentDevice = nullptr;
-    g_gameWindow = nullptr;
-    g_originalWndProc = nullptr;
+    g_currentDevice =
+        nullptr;
+
+    g_gameWindow =
+        nullptr;
+
+    g_originalWndProc =
+        nullptr;
 }
 
 static bool InitializeImGui(
@@ -187,17 +547,33 @@ static bool InitializeImGui(
     HWND window
 )
 {
+    LogRenderer(
+        "InitializeImGui attempt: device=%p window=%p IsWindow=%d IsIconic=%d",
+        device,
+        window,
+        window ? (IsWindow(window) ? 1 : 0) : 0,
+        window ? (IsIconic(window) ? 1 : 0) : 0
+    );
+
     if (
         !device ||
         !window ||
         !IsWindow(window)
         )
     {
+        LogRenderer(
+            "InitializeImGui rejected: invalid device or window"
+        );
+
         return false;
     }
 
     if (IsIconic(window))
     {
+        LogRenderer(
+            "InitializeImGui rejected: window is iconic"
+        );
+
         return false;
     }
 
@@ -208,6 +584,11 @@ static bool InitializeImGui(
         &clientRect
     ))
     {
+        LogRenderer(
+            "InitializeImGui rejected: GetClientRect failed error=%lu",
+            GetLastError()
+        );
+
         return false;
     }
 
@@ -219,11 +600,21 @@ static bool InitializeImGui(
         clientRect.bottom -
         clientRect.top;
 
+    LogRenderer(
+        "InitializeImGui client size: %ldx%ld",
+        width,
+        height
+    );
+
     if (
         width <= 0 ||
         height <= 0
         )
     {
+        LogRenderer(
+            "InitializeImGui rejected: invalid client size"
+        );
+
         return false;
     }
 
@@ -243,20 +634,40 @@ static bool InitializeImGui(
         window
     ))
     {
+        LogRenderer(
+            "InitializeImGui failed: ImGui_ImplWin32_Init"
+        );
+
         ImGui::DestroyContext();
 
         return false;
     }
+
+    LogRenderer(
+        "InitializeImGui: Win32 backend initialized"
+    );
 
     if (!ImGui_ImplDX9_Init(
         device
     ))
     {
+        LogRenderer(
+            "InitializeImGui failed: ImGui_ImplDX9_Init"
+        );
+
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
 
         return false;
     }
+
+    LogRenderer(
+        "InitializeImGui: DX9 backend initialized"
+    );
+
+    SetLastError(
+        ERROR_SUCCESS
+    );
 
     g_originalWndProc =
         reinterpret_cast<WNDPROC>(
@@ -271,12 +682,26 @@ static bool InitializeImGui(
 
     if (!g_originalWndProc)
     {
+        const DWORD error =
+            GetLastError();
+
+        LogRenderer(
+            "InitializeImGui failed: SetWindowLongPtr returned null error=%lu",
+            error
+        );
+
         ImGui_ImplDX9_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
 
         return false;
     }
+
+    LogRenderer(
+        "InitializeImGui: WndProc subclassed original=%p hook=%p",
+        g_originalWndProc,
+        HookedWndProc
+    );
 
     g_currentDevice =
         device;
@@ -290,7 +715,16 @@ static bool InitializeImGui(
             *fov;
     }
 
-    g_imguiInitialized = true;
+    g_imguiInitialized =
+        true;
+
+    LogRenderer(
+        "InitializeImGui SUCCESS: device=%p window=%p size=%ldx%ld",
+        g_currentDevice,
+        g_gameWindow,
+        width,
+        height
+    );
 
     UpdateCursorState();
 
@@ -301,10 +735,49 @@ static void UpdateRenderer(
     IDirect3DDevice9* device
 )
 {
+    IDirect3DDevice9* gameDevice =
+        GetGameDevice();
+
+    if (
+        gameDevice &&
+        device != gameDevice
+        )
+    {
+        return;
+    }
+
     HWND currentWindow =
         GetRenderWindow(
             device
         );
+
+    static IDirect3DDevice9* lastLoggedDevice =
+        nullptr;
+
+    static HWND lastLoggedWindow =
+        nullptr;
+
+    if (
+        device != lastLoggedDevice ||
+        currentWindow != lastLoggedWindow
+        )
+    {
+        LogRenderer(
+            "UpdateRenderer: device=%p window=%p gameDevice=%p initialized=%d currentDevice=%p currentWindow=%p",
+            device,
+            currentWindow,
+            gameDevice,
+            g_imguiInitialized ? 1 : 0,
+            g_currentDevice,
+            g_gameWindow
+        );
+
+        lastLoggedDevice =
+            device;
+
+        lastLoggedWindow =
+            currentWindow;
+    }
 
     if (!currentWindow)
     {
@@ -313,6 +786,17 @@ static void UpdateRenderer(
 
     if (!g_imguiInitialized)
     {
+        if (!IsWindowReady(
+            currentWindow
+        ))
+        {
+            return;
+        }
+
+        LogRenderer(
+            "UpdateRenderer: ImGui not initialized, starting initialization"
+        );
+
         InitializeImGui(
             device,
             currentWindow
@@ -335,12 +819,27 @@ static void UpdateRenderer(
         return;
     }
 
-    ShutdownImGui();
-
-    InitializeImGui(
+    LogRenderer(
+        "UpdateRenderer CHANGE: deviceChanged=%d windowChanged=%d oldDevice=%p newDevice=%p oldWindow=%p newWindow=%p",
+        deviceChanged ? 1 : 0,
+        windowChanged ? 1 : 0,
+        g_currentDevice,
         device,
+        g_gameWindow,
         currentWindow
     );
+
+    ShutdownImGui();
+
+    if (IsWindowReady(
+        currentWindow
+    ))
+    {
+        InitializeImGui(
+            device,
+            currentWindow
+        );
+    }
 }
 
 HRESULT APIENTRY HookedReset(
@@ -352,9 +851,30 @@ HRESULT APIENTRY HookedReset(
         g_imguiInitialized &&
         device == g_currentDevice;
 
+    LogRenderer(
+        "Reset ENTER: device=%p currentDevice=%p initialized=%d isCurrentDevice=%d windowed=%d backBuffer=%ux%u",
+        device,
+        g_currentDevice,
+        g_imguiInitialized ? 1 : 0,
+        isCurrentDevice ? 1 : 0,
+        presentationParameters
+        ? (presentationParameters->Windowed ? 1 : 0)
+        : -1,
+        presentationParameters
+        ? presentationParameters->BackBufferWidth
+        : 0,
+        presentationParameters
+        ? presentationParameters->BackBufferHeight
+        : 0
+    );
+
     if (isCurrentDevice)
     {
         ImGui_ImplDX9_InvalidateDeviceObjects();
+
+        LogRenderer(
+            "Reset: ImGui device objects invalidated"
+        );
     }
 
     const HRESULT result =
@@ -363,12 +883,24 @@ HRESULT APIENTRY HookedReset(
             presentationParameters
         );
 
+    LogRenderer(
+        "Reset RESULT: device=%p result=0x%08lX",
+        device,
+        static_cast<unsigned long>(
+            result
+            )
+    );
+
     if (
         SUCCEEDED(result) &&
         isCurrentDevice
         )
     {
         ImGui_ImplDX9_CreateDeviceObjects();
+
+        LogRenderer(
+            "Reset: ImGui device objects recreated"
+        );
     }
 
     return result;
@@ -378,10 +910,34 @@ HRESULT APIENTRY HookedEndScene(
     IDirect3DDevice9* device
 )
 {
+    void* returnAddress =
+        _ReturnAddress();
+
+    const bool callerInGame =
+        IsAddressInGameModule(
+            returnAddress
+        );
+
     const HRESULT result =
         g_originalEndScene(
             device
         );
+
+    if (!callerInGame)
+    {
+        return result;
+    }
+
+    IDirect3DDevice9* gameDevice =
+        GetGameDevice();
+
+    if (
+        gameDevice &&
+        device != gameDevice
+        )
+    {
+        return result;
+    }
 
     UpdateRenderer(
         device
@@ -395,6 +951,14 @@ HRESULT APIENTRY HookedEndScene(
     {
         g_menuOpen =
             !g_menuOpen;
+
+        LogRenderer(
+            "INSERT toggled: menuOpen=%d device=%p window=%p initialized=%d",
+            g_menuOpen ? 1 : 0,
+            g_currentDevice,
+            g_gameWindow,
+            g_imguiInitialized ? 1 : 0
+        );
 
         UpdateCursorState();
     }
@@ -422,138 +986,138 @@ HRESULT APIENTRY HookedEndScene(
 
 bool InstallRendererHooks()
 {
-    WNDCLASSEXA windowClass{};
+    ClearRendererLog();
 
-    windowClass.cbSize =
-        sizeof(windowClass);
+    LogRenderer(
+        "InstallRendererHooks START"
+    );
 
-    windowClass.lpfnWndProc =
-        DefWindowProcA;
+    const std::uintptr_t gameBase =
+        GetGameBase();
 
-    windowClass.hInstance =
-        GetModuleHandleA(nullptr);
-
-    windowClass.lpszClassName =
-        "0183B0TDummyWindow";
-
-    if (!RegisterClassExA(
-        &windowClass
-    ))
+    if (!gameBase)
     {
-        return false;
-    }
-
-    HWND dummyWindow =
-        CreateWindowExA(
-            0,
-            windowClass.lpszClassName,
-            "0183B0T",
-            WS_OVERLAPPEDWINDOW,
-            0,
-            0,
-            100,
-            100,
-            nullptr,
-            nullptr,
-            windowClass.hInstance,
-            nullptr
-        );
-
-    if (!dummyWindow)
-    {
-        UnregisterClassA(
-            windowClass.lpszClassName,
-            windowClass.hInstance
+        LogRenderer(
+            "InstallRendererHooks failed: game module not found"
         );
 
         return false;
     }
 
-    IDirect3D9* d3d =
-        Direct3DCreate9(
-            D3D_SDK_VERSION
-        );
+    LogRenderer(
+        "Game module base=%p",
+        reinterpret_cast<void*>(
+            gameBase
+            )
+    );
 
-    if (!d3d)
-    {
-        DestroyWindow(
-            dummyWindow
-        );
+    LogRenderer(
+        "Game device pointer address=%p",
+        reinterpret_cast<void*>(
+            gameBase +
+            kGameDevicePointerRva
+            )
+    );
 
-        UnregisterClassA(
-            windowClass.lpszClassName,
-            windowClass.hInstance
-        );
+    LogRenderer(
+        "Game window handle address=%p",
+        reinterpret_cast<void*>(
+            gameBase +
+            kGameWindowHandleRva
+            )
+    );
 
-        return false;
-    }
-
-    D3DPRESENT_PARAMETERS presentationParameters{};
-
-    presentationParameters.Windowed =
-        TRUE;
-
-    presentationParameters.SwapEffect =
-        D3DSWAPEFFECT_DISCARD;
-
-    presentationParameters.hDeviceWindow =
-        dummyWindow;
-
-    IDirect3DDevice9* dummyDevice =
+    IDirect3DDevice9* gameDevice =
         nullptr;
 
-    HRESULT createResult =
-        d3d->CreateDevice(
-            D3DADAPTER_DEFAULT,
-            D3DDEVTYPE_HAL,
-            dummyWindow,
-            D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-            &presentationParameters,
-            &dummyDevice
-        );
+    HWND gameWindow =
+        nullptr;
 
-    if (FAILED(createResult))
+    LogRenderer(
+        "Waiting for stable game D3D9 device and window"
+    );
+
+    while (!GetStableGameRenderer(
+        &gameDevice,
+        &gameWindow
+    ))
     {
-        createResult =
-            d3d->CreateDevice(
-                D3DADAPTER_DEFAULT,
-                D3DDEVTYPE_REF,
-                dummyWindow,
-                D3DCREATE_SOFTWARE_VERTEXPROCESSING,
-                &presentationParameters,
-                &dummyDevice
-            );
+        Sleep(
+            100
+        );
     }
 
+    LogRenderer(
+        "Game renderer ready: device=%p window=%p",
+        gameDevice,
+        gameWindow
+    );
+
+    IDirect3DDevice9* verifyDevice =
+        GetGameDevice();
+
+    HWND verifyWindow =
+        GetGameWindow();
+
     if (
-        FAILED(createResult) ||
-        !dummyDevice
+        gameDevice != verifyDevice ||
+        gameWindow != verifyWindow ||
+        !gameDevice ||
+        !IsWindowReady(gameWindow)
         )
     {
-        d3d->Release();
-
-        DestroyWindow(
-            dummyWindow
+        LogRenderer(
+            "Game renderer changed before hook creation, retrying"
         );
 
-        UnregisterClassA(
-            windowClass.lpszClassName,
-            windowClass.hInstance
-        );
-
-        return false;
+        do
+        {
+            Sleep(
+                100
+            );
+        } while (!GetStableGameRenderer(
+            &gameDevice,
+            &gameWindow
+        ));
     }
 
     void** vtable =
         *reinterpret_cast<void***>(
-            dummyDevice
+            gameDevice
             );
+
+    if (!vtable)
+    {
+        LogRenderer(
+            "InstallRendererHooks failed: invalid device vtable"
+        );
+
+        return false;
+    }
 
     void* resetAddress =
         vtable[16];
 
     void* endSceneAddress =
         vtable[42];
+
+    if (
+        !resetAddress ||
+        !endSceneAddress
+        )
+    {
+        LogRenderer(
+            "InstallRendererHooks failed: invalid Reset or EndScene address"
+        );
+
+        return false;
+    }
+
+    LogRenderer(
+        "Game D3D9 addresses: Reset=%p EndScene=%p",
+        resetAddress,
+        endSceneAddress
+    );
 
     const MH_STATUS resetStatus =
         MH_CreateHook(
@@ -566,6 +1130,19 @@ bool InstallRendererHooks()
                 )
         );
 
+    LogRenderer(
+        "MH_CreateHook Reset status=%d original=%p",
+        static_cast<int>(
+            resetStatus
+            ),
+        g_originalReset
+    );
+
+    if (resetStatus != MH_OK)
+    {
+        return false;
+    }
+
     const MH_STATUS endSceneStatus =
         MH_CreateHook(
             endSceneAddress,
@@ -577,19 +1154,22 @@ bool InstallRendererHooks()
                 )
         );
 
-    dummyDevice->Release();
-    d3d->Release();
-
-    DestroyWindow(
-        dummyWindow
+    LogRenderer(
+        "MH_CreateHook EndScene status=%d original=%p",
+        static_cast<int>(
+            endSceneStatus
+            ),
+        g_originalEndScene
     );
 
-    UnregisterClassA(
-        windowClass.lpszClassName,
-        windowClass.hInstance
+    if (endSceneStatus != MH_OK)
+    {
+        return false;
+    }
+
+    LogRenderer(
+        "InstallRendererHooks END success=1"
     );
 
-    return
-        resetStatus == MH_OK &&
-        endSceneStatus == MH_OK;
+    return true;
 }
