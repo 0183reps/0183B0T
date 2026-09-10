@@ -11,6 +11,7 @@
 
 #include "renderer.h"
 #include "input.h"
+
 #include "../features/fov.h"
 #include "../ui/menu.h"
 
@@ -27,7 +28,13 @@ using EndSceneFn = HRESULT(APIENTRY*)(
     IDirect3DDevice9* device
     );
 
+using ResetFn = HRESULT(APIENTRY*)(
+    IDirect3DDevice9* device,
+    D3DPRESENT_PARAMETERS* presentationParameters
+    );
+
 static EndSceneFn g_originalEndScene = nullptr;
+static ResetFn g_originalReset = nullptr;
 
 static HWND g_gameWindow = nullptr;
 static WNDPROC g_originalWndProc = nullptr;
@@ -43,7 +50,10 @@ LRESULT CALLBACK HookedWndProc(
     LPARAM lParam
 )
 {
-    if (g_imguiInitialized && g_menuOpen)
+    if (
+        g_imguiInitialized &&
+        g_menuOpen
+        )
     {
         ImGui_ImplWin32_WndProcHandler(
             hwnd,
@@ -67,48 +77,67 @@ LRESULT CALLBACK HookedWndProc(
     );
 }
 
-void InitializeImGui(
+static bool InitializeImGui(
     IDirect3DDevice9* device
 )
 {
     if (g_imguiInitialized)
     {
-        return;
+        return true;
     }
 
     D3DDEVICE_CREATION_PARAMETERS creationParameters{};
 
-    if (SUCCEEDED(
+    if (FAILED(
         device->GetCreationParameters(
             &creationParameters
         )
     ))
     {
-        g_gameWindow = creationParameters.hFocusWindow;
+        return false;
     }
 
-    if (!g_gameWindow)
+    g_gameWindow =
+        creationParameters.hFocusWindow;
+
+    if (
+        !g_gameWindow ||
+        !IsWindow(g_gameWindow)
+        )
     {
-        g_gameWindow = GetForegroundWindow();
+        return false;
     }
 
     IMGUI_CHECKVERSION();
 
     ImGui::CreateContext();
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io =
+        ImGui::GetIO();
 
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigFlags |=
+        ImGuiConfigFlags_NavEnableKeyboard;
 
     ImGui::StyleColorsDark();
 
-    ImGui_ImplWin32_Init(
+    if (!ImGui_ImplWin32_Init(
         g_gameWindow
-    );
+    ))
+    {
+        ImGui::DestroyContext();
 
-    ImGui_ImplDX9_Init(
+        return false;
+    }
+
+    if (!ImGui_ImplDX9_Init(
         device
-    );
+    ))
+    {
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+
+        return false;
+    }
 
     g_originalWndProc =
         reinterpret_cast<WNDPROC>(
@@ -121,14 +150,53 @@ void InitializeImGui(
             )
             );
 
+    if (!g_originalWndProc)
+    {
+        ImGui_ImplDX9_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        ImGui::DestroyContext();
+
+        return false;
+    }
+
     if (float* fov = GetFovAddress())
     {
-        g_fovValue = *fov;
+        g_fovValue =
+            *fov;
     }
 
     g_imguiInitialized = true;
 
     UpdateCursorState();
+
+    return true;
+}
+
+HRESULT APIENTRY HookedReset(
+    IDirect3DDevice9* device,
+    D3DPRESENT_PARAMETERS* presentationParameters
+)
+{
+    if (g_imguiInitialized)
+    {
+        ImGui_ImplDX9_InvalidateDeviceObjects();
+    }
+
+    const HRESULT result =
+        g_originalReset(
+            device,
+            presentationParameters
+        );
+
+    if (
+        SUCCEEDED(result) &&
+        g_imguiInitialized
+        )
+    {
+        ImGui_ImplDX9_CreateDeviceObjects();
+    }
+
+    return result;
 }
 
 HRESULT APIENTRY HookedEndScene(
@@ -144,7 +212,8 @@ HRESULT APIENTRY HookedEndScene(
 
     if (GetAsyncKeyState(VK_INSERT) & 1)
     {
-        g_menuOpen = !g_menuOpen;
+        g_menuOpen =
+            !g_menuOpen;
 
         UpdateCursorState();
     }
@@ -172,15 +241,17 @@ HRESULT APIENTRY HookedEndScene(
     );
 }
 
-bool InstallEndSceneHook()
+bool InstallRendererHooks()
 {
     WNDCLASSEXA windowClass{};
 
-    windowClass.cbSize = sizeof(
-        WNDCLASSEXA
-        );
+    windowClass.cbSize =
+        sizeof(
+            windowClass
+            );
 
-    windowClass.lpfnWndProc = DefWindowProcA;
+    windowClass.lpfnWndProc =
+        DefWindowProcA;
 
     windowClass.hInstance =
         GetModuleHandleA(nullptr);
@@ -188,9 +259,12 @@ bool InstallEndSceneHook()
     windowClass.lpszClassName =
         "FovB0tDummyWindow";
 
-    RegisterClassExA(
+    if (!RegisterClassExA(
         &windowClass
-    );
+    ))
+    {
+        return false;
+    }
 
     HWND dummyWindow =
         CreateWindowExA(
@@ -210,6 +284,11 @@ bool InstallEndSceneHook()
 
     if (!dummyWindow)
     {
+        UnregisterClassA(
+            windowClass.lpszClassName,
+            windowClass.hInstance
+        );
+
         return false;
     }
 
@@ -234,7 +313,8 @@ bool InstallEndSceneHook()
 
     D3DPRESENT_PARAMETERS presentationParameters{};
 
-    presentationParameters.Windowed = TRUE;
+    presentationParameters.Windowed =
+        TRUE;
 
     presentationParameters.SwapEffect =
         D3DSWAPEFFECT_DISCARD;
@@ -268,7 +348,10 @@ bool InstallEndSceneHook()
             );
     }
 
-    if (FAILED(result) || !dummyDevice)
+    if (
+        FAILED(result) ||
+        !dummyDevice
+        )
     {
         d3d->Release();
 
@@ -289,10 +372,24 @@ bool InstallEndSceneHook()
             dummyDevice
             );
 
+    void* resetAddress =
+        vtable[16];
+
     void* endSceneAddress =
         vtable[42];
 
-    const MH_STATUS hookStatus =
+    const MH_STATUS resetStatus =
+        MH_CreateHook(
+            resetAddress,
+            reinterpret_cast<void*>(
+                HookedReset
+                ),
+            reinterpret_cast<void**>(
+                &g_originalReset
+                )
+        );
+
+    const MH_STATUS endSceneStatus =
         MH_CreateHook(
             endSceneAddress,
             reinterpret_cast<void*>(
@@ -304,7 +401,6 @@ bool InstallEndSceneHook()
         );
 
     dummyDevice->Release();
-
     d3d->Release();
 
     DestroyWindow(
@@ -316,10 +412,7 @@ bool InstallEndSceneHook()
         windowClass.hInstance
     );
 
-    if (hookStatus != MH_OK)
-    {
-        return false;
-    }
-
-    return true;
+    return
+        resetStatus == MH_OK &&
+        endSceneStatus == MH_OK;
 }

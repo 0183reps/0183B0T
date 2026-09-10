@@ -6,7 +6,7 @@
 #include "core/renderer.h"
 
 bool g_imguiInitialized = false;
-bool g_menuOpen = true;
+bool g_menuOpen = false;
 
 float g_fovValue = 65.0f;
 
@@ -19,7 +19,7 @@ DWORD WINAPI MainThread(
         return 0;
     }
 
-    if (!InstallEndSceneHook())
+    if (!InstallRendererHooks())
     {
         return 0;
     }
@@ -34,7 +34,9 @@ DWORD WINAPI MainThread(
         return 0;
     }
 
-    if (MH_EnableHook(MH_ALL_HOOKS) != MH_OK)
+    if (MH_EnableHook(
+        MH_ALL_HOOKS
+    ) != MH_OK)
     {
         return 0;
     }

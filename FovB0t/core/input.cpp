@@ -23,16 +23,25 @@ using ClipCursorFn = BOOL(WINAPI*)(
     const RECT* rect
     );
 
-extern bool g_menuOpen;
-extern bool g_imguiInitialized;
-
 static MouseInputFn g_originalMouseInput = nullptr;
 static SetCursorPosFn g_originalSetCursorPos = nullptr;
 static ClipCursorFn g_originalClipCursor = nullptr;
 
 constexpr std::uintptr_t kMouseInputRva = 0xCFB60;
 
-bool ShouldIgnoreMessage(UINT message)
+extern bool g_menuOpen;
+extern bool g_imguiInitialized;
+
+static bool ShouldBlockInput()
+{
+    return
+        g_menuOpen &&
+        g_imguiInitialized;
+}
+
+bool ShouldIgnoreMessage(
+    UINT message
+)
 {
     switch (message)
     {
@@ -80,7 +89,7 @@ BOOL WINAPI HookedSetCursorPos(
     int y
 )
 {
-    if (g_menuOpen)
+    if (ShouldBlockInput())
     {
         return TRUE;
     }
@@ -95,7 +104,10 @@ BOOL WINAPI HookedClipCursor(
     const RECT* rect
 )
 {
-    if (g_menuOpen && rect != nullptr)
+    if (
+        ShouldBlockInput() &&
+        rect != nullptr
+        )
     {
         return TRUE;
     }
@@ -111,13 +123,14 @@ __int64 __fastcall HookedMouseInput(
     float* mouseY
 )
 {
-    const __int64 result = g_originalMouseInput(
-        inputState,
-        mouseX,
-        mouseY
-    );
+    const __int64 result =
+        g_originalMouseInput(
+            inputState,
+            mouseX,
+            mouseY
+        );
 
-    if (g_menuOpen)
+    if (ShouldBlockInput())
     {
         if (mouseX)
         {
@@ -140,9 +153,11 @@ void UpdateCursorState()
         return;
     }
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io =
+        ImGui::GetIO();
 
-    io.MouseDrawCursor = g_menuOpen;
+    io.MouseDrawCursor =
+        g_menuOpen;
 
     if (g_menuOpen)
     {
@@ -150,11 +165,15 @@ void UpdateCursorState()
 
         if (g_originalClipCursor)
         {
-            g_originalClipCursor(nullptr);
+            g_originalClipCursor(
+                nullptr
+            );
         }
         else
         {
-            ClipCursor(nullptr);
+            ClipCursor(
+                nullptr
+            );
         }
     }
 }
@@ -173,7 +192,8 @@ bool InstallMouseInputHook()
 
     void* mouseInputAddress =
         reinterpret_cast<void*>(
-            gameBase + kMouseInputRva
+            gameBase +
+            kMouseInputRva
             );
 
     const MH_STATUS status =
@@ -221,10 +241,5 @@ bool InstallCursorHooks()
                 )
         );
 
-    if (status != MH_OK)
-    {
-        return false;
-    }
-
-    return true;
+    return status == MH_OK;
 }

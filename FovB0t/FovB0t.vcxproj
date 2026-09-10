@@ -156,6 +156,7 @@
     <ClInclude Include="core\input.h" />
     <ClInclude Include="core\renderer.h" />
     <ClInclude Include="features\fov.h" />
+    <ClInclude Include="features\fps.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ui\menu.h" />
@@ -165,6 +166,7 @@
     <ClCompile Include="core\renderer.cpp" />
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="features\fov.cpp" />
+    <ClCompile Include="features\fps.cpp" />
     <ClCompile Include="imgui\backends\imgui_impl_dx9.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
