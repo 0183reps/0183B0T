@@ -174,7 +174,6 @@ static void ShutdownImGui()
     {
         ImGui_ImplDX9_Shutdown();
         ImGui_ImplWin32_Shutdown();
-
         ImGui::DestroyContext();
     }
 
@@ -192,6 +191,37 @@ static bool InitializeImGui(
         !device ||
         !window ||
         !IsWindow(window)
+        )
+    {
+        return false;
+    }
+
+    if (IsIconic(window))
+    {
+        return false;
+    }
+
+    RECT clientRect{};
+
+    if (!GetClientRect(
+        window,
+        &clientRect
+    ))
+    {
+        return false;
+    }
+
+    const long width =
+        clientRect.right -
+        clientRect.left;
+
+    const long height =
+        clientRect.bottom -
+        clientRect.top;
+
+    if (
+        width <= 0 ||
+        height <= 0
         )
     {
         return false;
@@ -348,6 +378,11 @@ HRESULT APIENTRY HookedEndScene(
     IDirect3DDevice9* device
 )
 {
+    const HRESULT result =
+        g_originalEndScene(
+            device
+        );
+
     UpdateRenderer(
         device
     );
@@ -366,8 +401,8 @@ HRESULT APIENTRY HookedEndScene(
 
     if (g_imguiInitialized)
     {
-        ImGui_ImplDX9_NewFrame();
         ImGui_ImplWin32_NewFrame();
+        ImGui_ImplDX9_NewFrame();
 
         ImGui::NewFrame();
 
@@ -382,9 +417,7 @@ HRESULT APIENTRY HookedEndScene(
         );
     }
 
-    return g_originalEndScene(
-        device
-    );
+    return result;
 }
 
 bool InstallRendererHooks()
@@ -469,7 +502,7 @@ bool InstallRendererHooks()
     IDirect3DDevice9* dummyDevice =
         nullptr;
 
-    HRESULT result =
+    HRESULT createResult =
         d3d->CreateDevice(
             D3DADAPTER_DEFAULT,
             D3DDEVTYPE_HAL,
@@ -479,9 +512,9 @@ bool InstallRendererHooks()
             &dummyDevice
         );
 
-    if (FAILED(result))
+    if (FAILED(createResult))
     {
-        result =
+        createResult =
             d3d->CreateDevice(
                 D3DADAPTER_DEFAULT,
                 D3DDEVTYPE_REF,
@@ -493,7 +526,7 @@ bool InstallRendererHooks()
     }
 
     if (
-        FAILED(result) ||
+        FAILED(createResult) ||
         !dummyDevice
         )
     {

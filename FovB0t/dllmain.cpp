@@ -19,6 +19,10 @@ DWORD WINAPI MainThread(
         return 0;
     }
 
+    Sleep(
+        2000
+    );
+
     if (!InstallRendererHooks())
     {
         return 0;
