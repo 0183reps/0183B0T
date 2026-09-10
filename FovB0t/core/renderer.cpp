@@ -36,12 +36,76 @@ using ResetFn = HRESULT(APIENTRY*)(
 static EndSceneFn g_originalEndScene = nullptr;
 static ResetFn g_originalReset = nullptr;
 
+static IDirect3DDevice9* g_currentDevice = nullptr;
 static HWND g_gameWindow = nullptr;
 static WNDPROC g_originalWndProc = nullptr;
 
 extern bool g_imguiInitialized;
 extern bool g_menuOpen;
 extern float g_fovValue;
+
+static HWND GetRenderWindow(
+    IDirect3DDevice9* device
+)
+{
+    IDirect3DSwapChain9* swapChain = nullptr;
+
+    if (SUCCEEDED(
+        device->GetSwapChain(
+            0,
+            &swapChain
+        )
+    ))
+    {
+        D3DPRESENT_PARAMETERS presentationParameters{};
+
+        if (SUCCEEDED(
+            swapChain->GetPresentParameters(
+                &presentationParameters
+            )
+        ))
+        {
+            HWND window =
+                presentationParameters.hDeviceWindow;
+
+            swapChain->Release();
+
+            if (
+                window &&
+                IsWindow(window)
+                )
+            {
+                return window;
+            }
+        }
+        else
+        {
+            swapChain->Release();
+        }
+    }
+
+    D3DDEVICE_CREATION_PARAMETERS creationParameters{};
+
+    if (SUCCEEDED(
+        device->GetCreationParameters(
+            &creationParameters
+        )
+    ))
+    {
+        HWND window =
+            creationParameters.hFocusWindow;
+
+        if (
+            window &&
+            IsWindow(window)
+            )
+        {
+            return window;
+        }
+    }
+
+    return nullptr;
+}
 
 LRESULT CALLBACK HookedWndProc(
     HWND hwnd,
@@ -68,8 +132,18 @@ LRESULT CALLBACK HookedWndProc(
         }
     }
 
-    return CallWindowProc(
-        g_originalWndProc,
+    if (g_originalWndProc)
+    {
+        return CallWindowProc(
+            g_originalWndProc,
+            hwnd,
+            message,
+            wParam,
+            lParam
+        );
+    }
+
+    return DefWindowProc(
         hwnd,
         message,
         wParam,
@@ -77,32 +151,47 @@ LRESULT CALLBACK HookedWndProc(
     );
 }
 
-static bool InitializeImGui(
-    IDirect3DDevice9* device
-)
+static void ShutdownImGui()
 {
-    if (g_imguiInitialized)
-    {
-        return true;
-    }
-
-    D3DDEVICE_CREATION_PARAMETERS creationParameters{};
-
-    if (FAILED(
-        device->GetCreationParameters(
-            &creationParameters
-        )
-    ))
-    {
-        return false;
-    }
-
-    g_gameWindow =
-        creationParameters.hFocusWindow;
+    g_imguiInitialized = false;
 
     if (
-        !g_gameWindow ||
-        !IsWindow(g_gameWindow)
+        g_gameWindow &&
+        g_originalWndProc &&
+        IsWindow(g_gameWindow)
+        )
+    {
+        SetWindowLongPtr(
+            g_gameWindow,
+            GWLP_WNDPROC,
+            reinterpret_cast<LONG_PTR>(
+                g_originalWndProc
+                )
+        );
+    }
+
+    if (ImGui::GetCurrentContext())
+    {
+        ImGui_ImplDX9_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+
+        ImGui::DestroyContext();
+    }
+
+    g_currentDevice = nullptr;
+    g_gameWindow = nullptr;
+    g_originalWndProc = nullptr;
+}
+
+static bool InitializeImGui(
+    IDirect3DDevice9* device,
+    HWND window
+)
+{
+    if (
+        !device ||
+        !window ||
+        !IsWindow(window)
         )
     {
         return false;
@@ -121,7 +210,7 @@ static bool InitializeImGui(
     ImGui::StyleColorsDark();
 
     if (!ImGui_ImplWin32_Init(
-        g_gameWindow
+        window
     ))
     {
         ImGui::DestroyContext();
@@ -142,7 +231,7 @@ static bool InitializeImGui(
     g_originalWndProc =
         reinterpret_cast<WNDPROC>(
             SetWindowLongPtr(
-                g_gameWindow,
+                window,
                 GWLP_WNDPROC,
                 reinterpret_cast<LONG_PTR>(
                     HookedWndProc
@@ -159,6 +248,12 @@ static bool InitializeImGui(
         return false;
     }
 
+    g_currentDevice =
+        device;
+
+    g_gameWindow =
+        window;
+
     if (float* fov = GetFovAddress())
     {
         g_fovValue =
@@ -172,12 +267,62 @@ static bool InitializeImGui(
     return true;
 }
 
+static void UpdateRenderer(
+    IDirect3DDevice9* device
+)
+{
+    HWND currentWindow =
+        GetRenderWindow(
+            device
+        );
+
+    if (!currentWindow)
+    {
+        return;
+    }
+
+    if (!g_imguiInitialized)
+    {
+        InitializeImGui(
+            device,
+            currentWindow
+        );
+
+        return;
+    }
+
+    const bool deviceChanged =
+        device != g_currentDevice;
+
+    const bool windowChanged =
+        currentWindow != g_gameWindow;
+
+    if (
+        !deviceChanged &&
+        !windowChanged
+        )
+    {
+        return;
+    }
+
+    ShutdownImGui();
+
+    InitializeImGui(
+        device,
+        currentWindow
+    );
+}
+
 HRESULT APIENTRY HookedReset(
     IDirect3DDevice9* device,
     D3DPRESENT_PARAMETERS* presentationParameters
 )
 {
-    if (g_imguiInitialized)
+    const bool isCurrentDevice =
+        g_imguiInitialized &&
+        device == g_currentDevice;
+
+    if (isCurrentDevice)
     {
         ImGui_ImplDX9_InvalidateDeviceObjects();
     }
@@ -190,7 +335,7 @@ HRESULT APIENTRY HookedReset(
 
     if (
         SUCCEEDED(result) &&
-        g_imguiInitialized
+        isCurrentDevice
         )
     {
         ImGui_ImplDX9_CreateDeviceObjects();
@@ -203,14 +348,15 @@ HRESULT APIENTRY HookedEndScene(
     IDirect3DDevice9* device
 )
 {
-    if (!g_imguiInitialized)
-    {
-        InitializeImGui(
-            device
-        );
-    }
+    UpdateRenderer(
+        device
+    );
 
-    if (GetAsyncKeyState(VK_INSERT) & 1)
+    if (
+        GetAsyncKeyState(
+            VK_INSERT
+        ) & 1
+        )
     {
         g_menuOpen =
             !g_menuOpen;
@@ -246,9 +392,7 @@ bool InstallRendererHooks()
     WNDCLASSEXA windowClass{};
 
     windowClass.cbSize =
-        sizeof(
-            windowClass
-            );
+        sizeof(windowClass);
 
     windowClass.lpfnWndProc =
         DefWindowProcA;
