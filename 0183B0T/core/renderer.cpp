@@ -434,7 +434,7 @@ bool InstallRendererHooks()
         GetModuleHandleA(nullptr);
 
     windowClass.lpszClassName =
-        "FovB0tDummyWindow";
+        "0183B0TDummyWindow";
 
     if (!RegisterClassExA(
         &windowClass
@@ -447,7 +447,7 @@ bool InstallRendererHooks()
         CreateWindowExA(
             0,
             windowClass.lpszClassName,
-            "FovB0t",
+            "0183B0T",
             WS_OVERLAPPEDWINDOW,
             0,
             0,

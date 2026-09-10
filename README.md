@@ -1,4 +1,4 @@
-# FovB0t
+# 0183B0T
 
 A lightweight FOV changer for the new 64-bit version of Call of Duty: Modern Warfare 3 (2011) (`iw5mp.exe`).
 
@@ -16,21 +16,21 @@ A lightweight FOV changer for the new 64-bit version of Call of Duty: Modern War
 
 ## Usage
 
-1. Download `FovB0t.dll` from the latest GitHub Release.
+1. Download `0183B0T.dll` from the latest GitHub Release.
 2. Start the 64-bit version of the game.
-3. Inject `FovB0t.dll` into `iw5mp.exe` using a DLL injector of your choice.
-4. Press `INSERT` to open or close the FovB0t menu.
+3. Inject `0183B0T.dll` into `iw5mp.exe` using a DLL injector of your choice.
+4. Press `INSERT` to open or close the 0183B0T menu.
 5. Use the FOV slider to select your preferred field of view.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| `INSERT` | Open / close the FovB0t menu |
+| `INSERT` | Open / close the 0183B0T menu |
 
 ## Building From Source
 
-FovB0t is written in C++ and built using Visual Studio.
+0183B0T is written in C++ and built using Visual Studio.
 
 ### Requirements
 
@@ -42,7 +42,7 @@ The repository includes the required ImGui and MinHook source files.
 
 To build:
 
-1. Open `FovB0t.slnx` in Visual Studio.
+1. Open `0183B0T.slnx` in Visual Studio.
 2. Select `Release`.
 3. Select `x64`.
 4. Build the solution.
@@ -51,7 +51,7 @@ The compiled DLL will be generated in the x64 Release output directory.
 
 ## Third-Party Libraries
 
-FovB0t uses:
+0183B0T uses:
 
 - Dear ImGui
 - MinHook
@@ -60,9 +60,9 @@ Please refer to their respective projects and licenses for more information.
 
 ## Compatibility
 
-FovB0t is designed for the new 64-bit version of Call of Duty: Modern Warfare 3 (2011).
+0183B0T is designed for the new 64-bit version of Call of Duty: Modern Warfare 3 (2011).
 
-The tool currently relies on offsets specific to the supported game build. Future game updates may require an updated version of FovB0t.
+The tool currently relies on offsets specific to the supported game build. Future game updates may require an updated version of 0183B0T.
 
 ## Disclaimer
 
@@ -72,6 +72,7 @@ Use it at your own risk. The author is not responsible for crashes, incompatibil
 
 ## Version
 
-**FovB0t v1.0**
+**0183B0T v1.0**
 
 Initial release featuring an in-game FOV changer and ImGui interface.
+

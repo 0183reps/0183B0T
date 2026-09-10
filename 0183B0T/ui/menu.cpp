@@ -95,7 +95,7 @@ void RenderMenu()
     );
 
     ImGui::Begin(
-        "FovB0t | By: 0183",
+        "0183B0T | By: 0183",
         nullptr,
         ImGuiWindowFlags_NoCollapse
     );
