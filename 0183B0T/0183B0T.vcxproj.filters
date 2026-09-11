@@ -36,6 +36,9 @@
     <ClInclude Include="features\fps.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="features\players.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -90,6 +93,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="features\fps.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="features\players.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
