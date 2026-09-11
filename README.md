@@ -3,7 +3,7 @@
 A lightweight and expandable in-game modification menu for the new 64-bit version of Call of Duty: Modern Warfare 3 (2011) (`iw5mp.exe`).
 
 Originally released as **FovB0t v1.0**, the project started as a simple FOV changer.  
-With **0183B0T v2.0**, it has evolved into a more general-purpose in-game menu with support for multiple features.
+With **0183B0T v2.0**, it evolved into a more general-purpose in-game menu with support for multiple features.
 
 **WORKS AFTER THE MW3 UPDATE FROM [3 September 2026](https://steamdb.info/patchnotes/24615914/)**
 
@@ -13,6 +13,7 @@ With **0183B0T v2.0**, it has evolved into a more general-purpose in-game menu w
 
 - Change the in-game FOV from 40 to 120
 - Reset the FOV to the default value of 65
+- Custom FOV is automatically reapplied when the game resets the FOV
 
 ### Performance
 
@@ -92,9 +93,15 @@ Use it at your own risk. The author is not responsible for crashes, incompatibil
 
 ## Version
 
-**0183B0T v2.0**
+**0183B0T v2.1**
 
-Major update from the original FovB0t project.
+Bugfix release improving FOV persistence across game state changes.
+
+### What's New in v2.1
+
+- Fixed custom FOV resetting after death and respawn
+- Fixed custom FOV resetting when entering a new match
+- Custom FOV is now automatically reapplied when the game resets `cg_fov`
 
 ### What's New in v2.0
 
