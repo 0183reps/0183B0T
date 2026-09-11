@@ -5,6 +5,7 @@
 #include "menu.h"
 #include "../features/fov.h"
 #include "../features/fps.h"
+#include "../features/players.h"
 
 extern bool g_menuOpen;
 extern float g_fovValue;
@@ -92,8 +93,8 @@ void RenderMenu()
 
     ImGui::SetNextWindowSize(
         ImVec2(
-            500.0f,
-            180.0f
+            760.0f,
+            500.0f
         ),
         ImGuiCond_FirstUseEver
     );
@@ -227,6 +228,128 @@ void RenderMenu()
 
         g_fpsInputValue =
             GetFpsLimit();
+    }
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::Text(
+        "Players"
+    );
+
+    const std::vector<PlayerInfo> players =
+        GetPlayers();
+
+    int activePlayerCount =
+        0;
+
+    for (const PlayerInfo& player : players)
+    {
+        if (player.occupied)
+        {
+            ++activePlayerCount;
+        }
+    }
+
+    ImGui::Text(
+        "Active players: %d / 18",
+        activePlayerCount
+    );
+
+    ImGui::Spacing();
+
+    if (ImGui::BeginTable(
+        "PlayersTable",
+        4,
+        ImGuiTableFlags_Borders |
+        ImGuiTableFlags_RowBg |
+        ImGuiTableFlags_SizingStretchProp
+    ))
+    {
+        ImGui::TableSetupColumn(
+            "Slot",
+            ImGuiTableColumnFlags_WidthFixed,
+            50.0f
+        );
+
+        ImGui::TableSetupColumn(
+            "Name"
+        );
+
+        ImGui::TableSetupColumn(
+            "IP"
+        );
+
+        ImGui::TableSetupColumn(
+            "Steam ID"
+        );
+
+        ImGui::TableHeadersRow();
+
+        for (const PlayerInfo& player : players)
+        {
+            if (!player.occupied)
+            {
+                continue;
+            }
+
+            ImGui::TableNextRow();
+
+            ImGui::TableSetColumnIndex(
+                0
+            );
+
+            ImGui::Text(
+                "%d",
+                player.slot
+            );
+
+            ImGui::TableSetColumnIndex(
+                1
+            );
+
+            ImGui::TextUnformatted(
+                player.name.c_str()
+            );
+
+            ImGui::TableSetColumnIndex(
+                2
+            );
+
+            ImGui::TextUnformatted(
+                player.ip.c_str()
+            );
+
+            ImGui::TableSetColumnIndex(
+                3
+            );
+
+            if (player.steamId == 0)
+            {
+                ImGui::TextUnformatted(
+                    "-"
+                );
+            }
+            else
+            {
+                ImGui::Text(
+                    "%llu",
+                    static_cast<unsigned long long>(
+                        player.steamId
+                        )
+                );
+            }
+        }
+
+        ImGui::EndTable();
+    }
+
+    if (activePlayerCount == 0)
+    {
+        ImGui::TextDisabled(
+            "No active players"
+        );
     }
 
     ImGui::Spacing();
