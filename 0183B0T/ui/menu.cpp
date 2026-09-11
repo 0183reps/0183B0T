@@ -81,6 +81,10 @@ static bool RepeatButton(
 
 void RenderMenu()
 {
+    SetFov(
+        g_fovValue
+    );
+
     if (!g_menuOpen)
     {
         return;
