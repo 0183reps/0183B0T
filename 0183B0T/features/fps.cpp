@@ -16,6 +16,8 @@ constexpr int kDefaultFpsLimit = 85;
 constexpr int kMinimumFpsLimit = 0;
 constexpr int kMaximumFpsLimit = 240;
 
+static int g_desiredFpsLimit = kDefaultFpsLimit;
+
 int* GetFpsLimitAddress()
 {
     const auto gameBase =
@@ -59,6 +61,11 @@ int GetFpsLimit()
     return -1;
 }
 
+int GetDesiredFpsLimit()
+{
+    return g_desiredFpsLimit;
+}
+
 void SetFpsLimit(int value)
 {
     if (value < kMinimumFpsLimit)
@@ -71,9 +78,25 @@ void SetFpsLimit(int value)
         value = kMaximumFpsLimit;
     }
 
+    g_desiredFpsLimit =
+        value;
+
     if (int* fpsLimit = GetFpsLimitAddress())
     {
-        *fpsLimit = value;
+        *fpsLimit =
+            g_desiredFpsLimit;
+    }
+}
+
+void EnforceFpsLimit()
+{
+    if (int* fpsLimit = GetFpsLimitAddress())
+    {
+        if (*fpsLimit != g_desiredFpsLimit)
+        {
+            *fpsLimit =
+                g_desiredFpsLimit;
+        }
     }
 }
 

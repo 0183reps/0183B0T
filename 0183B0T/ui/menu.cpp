@@ -86,6 +86,8 @@ void RenderMenu()
         g_fovValue
     );
 
+    EnforceFpsLimit();
+
     if (!g_menuOpen)
     {
         return;
