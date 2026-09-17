@@ -269,36 +269,39 @@ void RenderMenu()
         "Chams"
     );
 
-
     ChamsSettings& chams =
         GetChamsSettings();
-
 
     ImGui::Checkbox(
         "Enabled##Chams",
         &chams.enabled
     );
 
-
     ImGui::SameLine();
 
+
+    // ---------------------------------------------------------
+    // Target:
+    //
+    // All
+    // Enemies
+    // Friendlies
+    // ---------------------------------------------------------
 
     int target =
         static_cast<int>(
             chams.target
             );
 
-
     ImGui::SetNextItemWidth(
         120.0f
     );
-
 
     if (
         ImGui::Combo(
             "Target##Chams",
             &target,
-            "All\0Axis\0Allies\0"
+            "All\0Enemies\0Friendlies\0"
         )
         )
     {
@@ -312,8 +315,10 @@ void RenderMenu()
     ImGui::SameLine();
 
 
-    // Exact requested name:
-    // "Wall Hack"
+    // ---------------------------------------------------------
+    // Wall Hack
+    // ---------------------------------------------------------
+
     ImGui::Checkbox(
         "Wall Hack##Chams",
         &chams.wallHack
@@ -322,6 +327,10 @@ void RenderMenu()
 
     ImGui::SameLine();
 
+
+    // ---------------------------------------------------------
+    // Dead bodies
+    // ---------------------------------------------------------
 
     ImGui::Checkbox(
         "Dead bodies##Chams",
@@ -341,7 +350,6 @@ void RenderMenu()
         chams.hiddenColor.a
     };
 
-
     float visibleColor[4] =
     {
         chams.visibleColor.r,
@@ -351,7 +359,7 @@ void RenderMenu()
     };
 
 
-    // Hidden color is only relevant when Wall Hack is enabled.
+    // Hidden color only matters when Wall Hack is enabled.
     if (chams.wallHack)
     {
         if (
@@ -370,7 +378,6 @@ void RenderMenu()
                 hiddenColor[3]
             };
         }
-
 
         ImGui::SameLine();
     }
@@ -406,14 +413,11 @@ void RenderMenu()
         "Players"
     );
 
-
     const std::vector<PlayerInfo> players =
         GetPlayers();
 
-
     int activePlayerCount =
         0;
-
 
     for (const PlayerInfo& player : players)
     {
@@ -423,15 +427,12 @@ void RenderMenu()
         }
     }
 
-
     ImGui::Text(
         "Active players: %d / 18",
         activePlayerCount
     );
 
-
     ImGui::Spacing();
-
 
     if (
         ImGui::BeginTable(
@@ -449,24 +450,19 @@ void RenderMenu()
             50.0f
         );
 
-
         ImGui::TableSetupColumn(
             "Name"
         );
-
 
         ImGui::TableSetupColumn(
             "IP"
         );
 
-
         ImGui::TableSetupColumn(
             "Steam ID"
         );
 
-
         ImGui::TableHeadersRow();
-
 
         for (const PlayerInfo& player : players)
         {
@@ -475,45 +471,36 @@ void RenderMenu()
                 continue;
             }
 
-
             ImGui::TableNextRow();
-
 
             ImGui::TableSetColumnIndex(
                 0
             );
-
 
             ImGui::Text(
                 "%d",
                 player.slot
             );
 
-
             ImGui::TableSetColumnIndex(
                 1
             );
-
 
             ImGui::TextUnformatted(
                 player.name.c_str()
             );
 
-
             ImGui::TableSetColumnIndex(
                 2
             );
-
 
             ImGui::TextUnformatted(
                 player.ip.c_str()
             );
 
-
             ImGui::TableSetColumnIndex(
                 3
             );
-
 
             if (player.steamId == 0)
             {
@@ -532,10 +519,8 @@ void RenderMenu()
             }
         }
 
-
         ImGui::EndTable();
     }
-
 
     if (activePlayerCount == 0)
     {
@@ -549,11 +534,9 @@ void RenderMenu()
     ImGui::Separator();
     ImGui::Spacing();
 
-
     ImGui::TextDisabled(
         "INSERT | Toggle menu"
     );
-
 
     ImGui::End();
 }

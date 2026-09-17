@@ -30,18 +30,12 @@ namespace
     // Scene / entity layout
     // =========================================================
 
-    // sub_1401FB2B0:
-    // sceneRecord + 0x80 = entity*
     constexpr std::uintptr_t kSceneEntityOffset =
         0x80;
 
-    // entity + 0xDC
-    // 1 = ET_PLAYER
-    // 2 = ET_PLAYER_CORPSE
     constexpr std::uintptr_t kEntityTypeOffset =
         0xDC;
 
-    // Live-player client index.
     constexpr std::uintptr_t kEntityClientIndexOffset =
         0x168;
 
@@ -50,13 +44,14 @@ namespace
     // Team data
     // =========================================================
 
-    // IDA:
+    // Proven from:
     //
     // dword_1405A60D0[
     //     350 * clientIndex + 279745
     // ]
     //
-    // 0x5A60D0 + (279745 * 4) = 0x6B73D4
+    // 0x5A60D0 + (279745 * 4)
+    // = 0x6B73D4
     constexpr std::uintptr_t kTeamArrayRva =
         0x6B73D4;
 
@@ -64,42 +59,39 @@ namespace
         350 * sizeof(std::uint32_t);
 
 
+    // qword_1405A6220
+    //
+    // Game uses:
+    // (int)qword_1405A6220
+    //
+    // This is the local client index used by the
+    // game's own team comparison.
+    constexpr std::uintptr_t kLocalClientIndexRva =
+        0x5A6220;
+
+
     // =========================================================
     // Renderer layout
     // =========================================================
 
-    // state2 + 0x110 = primState
-    // state2 + 0x160 = Material*
-    //
-    // Therefore:
-    // primState + 0x50 = Material*
     constexpr std::uintptr_t kPrimStateMaterialOffset =
         0x50;
 
-    // Material + 0x00 = char* materialName
     constexpr std::uintptr_t kMaterialNameOffset =
         0x00;
 
-    // sub_1401AAB20:
-    // context + 0xB0 = pointer to current packed surface
     constexpr std::uintptr_t kPackedCurrentOffset =
         0xB0;
 
 
     // =========================================================
-    // Entity/team values
+    // Entity values
     // =========================================================
 
     constexpr std::uint32_t kPlayerEntityType =
         1;
 
     constexpr std::uint32_t kCorpseEntityType =
-        2;
-
-    constexpr std::uint32_t kAxisTeam =
-        1;
-
-    constexpr std::uint32_t kAlliesTeam =
         2;
 
     constexpr std::size_t kSurfaceIndexCount =
@@ -259,6 +251,66 @@ namespace
     }
 
 
+    // =========================================================
+    // Local team
+    //
+    // Mirrors the game's own logic from sub_140092600:
+    //
+    // localClientIndex =
+    //     (int)qword_1405A6220;
+    //
+    // localTeam =
+    //     dword_1405A60D0[
+    //         350 * localClientIndex + 279745
+    //     ];
+    // =========================================================
+
+    std::uint32_t GetLocalTeam()
+    {
+        const std::uintptr_t gameBase =
+            GetGameBase();
+
+        if (!gameBase)
+        {
+            return 0;
+        }
+
+        __try
+        {
+            const int localClientIndex =
+                *reinterpret_cast<const int*>(
+                    gameBase +
+                    kLocalClientIndexRva
+                    );
+
+            if (
+                localClientIndex < 0 ||
+                localClientIndex >= 18
+                )
+            {
+                return 0;
+            }
+
+            return
+                *reinterpret_cast<const std::uint32_t*>(
+                    gameBase +
+                    kTeamArrayRva +
+                    (
+                        static_cast<std::uintptr_t>(
+                            localClientIndex
+                            )
+                        *
+                        kClientStateStride
+                        )
+                    );
+        }
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+            return 0;
+        }
+    }
+
+
     SurfaceMetadata ClassifyEntity(
         void* entity
     )
@@ -276,7 +328,6 @@ namespace
                 reinterpret_cast<std::uintptr_t>(
                     entity
                     );
-
 
             const auto entityType =
                 *reinterpret_cast<const std::uint32_t*>(
@@ -320,7 +371,6 @@ namespace
                     kEntityClientIndexOffset
                     );
 
-
             if (
                 clientIndex < 0 ||
                 clientIndex >= 18
@@ -329,16 +379,13 @@ namespace
                 return metadata;
             }
 
-
             const std::uintptr_t gameBase =
                 GetGameBase();
-
 
             if (!gameBase)
             {
                 return metadata;
             }
-
 
             const auto team =
                 *reinterpret_cast<const std::uint32_t*>(
@@ -353,12 +400,10 @@ namespace
                         )
                     );
 
-
             metadata.entityType =
                 static_cast<std::uint8_t>(
                     kPlayerEntityType
                     );
-
 
             metadata.team =
                 static_cast<std::uint8_t>(
@@ -369,7 +414,6 @@ namespace
         {
             metadata = {};
         }
-
 
         return metadata;
     }
@@ -385,7 +429,11 @@ namespace
         }
 
 
-        // Corpse selection is separate from team selection.
+        // -----------------------------------------------------
+        // Corpses remain controlled separately.
+        // We'll fix the remaining corpse bug separately.
+        // -----------------------------------------------------
+
         if (metadata.entityType == kCorpseEntityType)
         {
             return g_settings.deadBodies;
@@ -398,30 +446,76 @@ namespace
         }
 
 
-        switch (g_settings.target)
+        // -----------------------------------------------------
+        // All
+        //
+        // Keep team 0 excluded. The game's own comparison also
+        // explicitly checks that the local team is non-zero.
+        // -----------------------------------------------------
+
+        if (g_settings.target == ChamsTarget::All)
         {
-        case ChamsTarget::Axis:
-
-            return
-                metadata.team ==
-                kAxisTeam;
-
-
-        case ChamsTarget::Allies:
-
-            return
-                metadata.team ==
-                kAlliesTeam;
-
-
-        case ChamsTarget::All:
-
-        default:
-
-            return
-                metadata.team == kAxisTeam ||
-                metadata.team == kAlliesTeam;
+            return metadata.team != 0;
         }
+
+
+        const std::uint32_t localTeam =
+            GetLocalTeam();
+
+
+        // No valid local team -> don't guess.
+        if (
+            localTeam == 0 ||
+            metadata.team == 0
+            )
+        {
+            return false;
+        }
+
+
+        // -----------------------------------------------------
+        // Friendlies
+        //
+        // Same comparison used by the game:
+        //
+        // localTeam == playerTeam
+        // -----------------------------------------------------
+
+        if (
+            g_settings.target ==
+            ChamsTarget::Friendlies
+            )
+        {
+            return
+                static_cast<std::uint32_t>(
+                    metadata.team
+                    )
+                ==
+                localTeam;
+        }
+
+
+        // -----------------------------------------------------
+        // Enemies
+        //
+        // Both teams valid, but different.
+        // -----------------------------------------------------
+
+        if (
+            g_settings.target ==
+            ChamsTarget::Enemies
+            )
+        {
+            return
+                static_cast<std::uint32_t>(
+                    metadata.team
+                    )
+                !=
+                localTeam;
+        }
+
+
+        return false;
     }
 
 
@@ -449,7 +543,6 @@ namespace
             return false;
         }
 
-
         __try
         {
             const auto primAddress =
@@ -457,19 +550,16 @@ namespace
                     primState
                     );
 
-
             void* material =
                 *reinterpret_cast<void**>(
                     primAddress +
                     kPrimStateMaterialOffset
                     );
 
-
             if (!material)
             {
                 return false;
             }
-
 
             const char* name =
                 *reinterpret_cast<const char**>(
@@ -480,14 +570,11 @@ namespace
                     kMaterialNameOffset
                     );
 
-
             if (!name)
             {
                 return false;
             }
 
-
-            // Player world-model materials.
             if (
                 std::strncmp(
                     name,
@@ -499,8 +586,6 @@ namespace
                 return false;
             }
 
-
-            // Never color attached weapon/viewmodel materials.
             if (
                 Contains(name, "weapon") ||
                 Contains(name, "viewmodel") ||
@@ -510,11 +595,6 @@ namespace
                 return false;
             }
 
-
-            // These strings only determine whether this is
-            // a player-body material.
-            //
-            // They do NOT determine the player's team.
             return
                 Contains(name, "henchmen") ||
                 Contains(name, "russian") ||
@@ -558,7 +638,6 @@ namespace
                     );
             };
 
-
         return D3DCOLOR_ARGB(
             clampByte(color.a),
             clampByte(color.r),
@@ -584,12 +663,10 @@ namespace
             return false;
         }
 
-
         const D3DCOLOR color =
             ToD3DColor(
                 requestedColor
             );
-
 
         if (!*texture)
         {
@@ -611,16 +688,13 @@ namespace
                 return false;
             }
 
-
             *cachedColor =
                 ~color;
         }
 
-
         if (*cachedColor != color)
         {
             D3DLOCKED_RECT locked{};
-
 
             if (
                 FAILED(
@@ -636,21 +710,17 @@ namespace
                 return false;
             }
 
-
             *reinterpret_cast<D3DCOLOR*>(
                 locked.pBits
                 ) = color;
-
 
             (*texture)->UnlockRect(
                 0
             );
 
-
             *cachedColor =
                 color;
         }
-
 
         return true;
     }
@@ -658,8 +728,7 @@ namespace
 
     // =========================================================
     // Hook 1
-    //
-    // Scene entity -> packed low15 surface metadata
+    // Scene entity -> packed surface metadata
     // =========================================================
 
     std::uint64_t* __fastcall HookedAddDObjSurfaces(
@@ -670,7 +739,6 @@ namespace
     )
     {
         SurfaceMetadata metadata{};
-
 
         if (sceneRecord)
         {
@@ -685,7 +753,6 @@ namespace
                         kSceneEntityOffset
                         );
 
-
                 metadata =
                     ClassifyEntity(
                         entity
@@ -697,7 +764,6 @@ namespace
             }
         }
 
-
         std::uint64_t* end =
             g_originalAddDObjSurfaces(
                 sceneRecord,
@@ -705,7 +771,6 @@ namespace
                 output,
                 outputEnd
             );
-
 
         if (
             !output ||
@@ -716,12 +781,10 @@ namespace
             return end;
         }
 
-
         const std::uint16_t packedMetadata =
             PackMetadata(
                 metadata
             );
-
 
         for (
             std::uint64_t* entry = output;
@@ -735,7 +798,6 @@ namespace
                     0x7FFFULL
                     );
 
-
             g_surfaceMetadata[
                 surfaceIndex
             ].store(
@@ -744,14 +806,12 @@ namespace
             );
         }
 
-
         return end;
     }
 
 
     // =========================================================
     // Hook 2
-    //
     // Current packed surface -> TLS metadata
     // =========================================================
 
@@ -766,12 +826,10 @@ namespace
         const bool previousHasSurface =
             g_hasActiveSurface;
 
-
         SurfaceMetadata metadata{};
 
         bool hasMetadata =
             false;
-
 
         if (context)
         {
@@ -786,7 +844,6 @@ namespace
                         kPackedCurrentOffset
                         );
 
-
                 if (
                     current &&
                     *current
@@ -795,13 +852,11 @@ namespace
                     const std::uint64_t packedEntry =
                         **current;
 
-
                     const std::size_t surfaceIndex =
                         static_cast<std::size_t>(
                             packedEntry &
                             0x7FFFULL
                             );
-
 
                     metadata =
                         UnpackMetadata(
@@ -811,7 +866,6 @@ namespace
                                 std::memory_order_acquire
                             )
                                     );
-
 
                     hasMetadata =
                         metadata.entityType ==
@@ -828,13 +882,11 @@ namespace
             }
         }
 
-
         g_activeSurface =
             metadata;
 
         g_hasActiveSurface =
             hasMetadata;
-
 
         const bool result =
             g_originalPackedSurfaceConsumer(
@@ -842,13 +894,11 @@ namespace
                 context
             );
 
-
         g_activeSurface =
             previousSurface;
 
         g_hasActiveSurface =
             previousHasSurface;
-
 
         return result;
     }
@@ -856,7 +906,6 @@ namespace
 
     // =========================================================
     // Hook 3
-    //
     // Engine DrawIndexedPrimitive wrapper
     // =========================================================
 
@@ -865,10 +914,6 @@ namespace
         const DrawArgs* args
     )
     {
-        // -----------------------------------------------------
-        // Not a selected Chams surface -> untouched game draw
-        // -----------------------------------------------------
-
         if (
             !g_hasActiveSurface ||
             !IsSelected(
@@ -886,7 +931,6 @@ namespace
                 );
         }
 
-
         if (!primState)
         {
             return
@@ -896,12 +940,10 @@ namespace
                 );
         }
 
-
         auto* device =
             *reinterpret_cast<IDirect3DDevice9**>(
                 primState
                 );
-
 
         if (!device)
         {
@@ -913,9 +955,9 @@ namespace
         }
 
 
-        // -----------------------------------------------------
-        // Visible texture is always required when Chams is on.
-        // -----------------------------------------------------
+        // =====================================================
+        // Visible texture
+        // =====================================================
 
         if (
             !EnsureColorTexture(
@@ -934,30 +976,26 @@ namespace
         }
 
 
-        // -----------------------------------------------------
+        // =====================================================
         // Wall Hack OFF
         //
-        // Only draw the normal depth-tested visible pass.
-        // Nothing is drawn through walls.
-        // -----------------------------------------------------
+        // Normal depth-tested visible pass only.
+        // =====================================================
 
         if (!g_settings.wallHack)
         {
             IDirect3DBaseTexture9* oldTexture =
                 nullptr;
 
-
             device->GetTexture(
                 0,
                 &oldTexture
             );
 
-
             device->SetTexture(
                 0,
                 g_visibleTexture
             );
-
 
             const HRESULT result =
                 g_originalDrawIndexedPrimitive(
@@ -965,28 +1003,27 @@ namespace
                     args
                 );
 
-
             device->SetTexture(
                 0,
                 oldTexture
             );
-
 
             if (oldTexture)
             {
                 oldTexture->Release();
             }
 
-
             return result;
         }
 
 
-        // -----------------------------------------------------
+        // =====================================================
         // Wall Hack ON
         //
-        // Hidden texture is needed for the through-wall pass.
-        // -----------------------------------------------------
+        // Keep the original working wall-hack implementation
+        // for now. The hidden/visible overlap will be fixed
+        // separately after the team/corpse issues.
+        // =====================================================
 
         if (
             !EnsureColorTexture(
@@ -1008,7 +1045,6 @@ namespace
         DWORD oldZEnable =
             TRUE;
 
-
         IDirect3DBaseTexture9* oldTexture =
             nullptr;
 
@@ -1018,7 +1054,6 @@ namespace
             &oldZEnable
         );
 
-
         device->GetTexture(
             0,
             &oldTexture
@@ -1026,12 +1061,9 @@ namespace
 
 
         // -----------------------------------------------------
-        // PASS 1
+        // PASS 1 - HIDDEN
         //
-        // Wall Hack / hidden pass.
-        //
-        // Disable depth testing so the body is also drawn
-        // when geometry is between the camera and player.
+        // Original working implementation.
         // -----------------------------------------------------
 
         device->SetRenderState(
@@ -1039,12 +1071,10 @@ namespace
             FALSE
         );
 
-
         device->SetTexture(
             0,
             g_hiddenTexture
         );
-
 
         g_originalDrawIndexedPrimitive(
             primState,
@@ -1053,11 +1083,7 @@ namespace
 
 
         // -----------------------------------------------------
-        // PASS 2
-        //
-        // Restore the original depth state and draw normally.
-        //
-        // This means visible body pixels use visibleColor.
+        // PASS 2 - VISIBLE
         // -----------------------------------------------------
 
         device->SetRenderState(
@@ -1065,12 +1091,10 @@ namespace
             oldZEnable
         );
 
-
         device->SetTexture(
             0,
             g_visibleTexture
         );
-
 
         const HRESULT result =
             g_originalDrawIndexedPrimitive(
@@ -1088,18 +1112,15 @@ namespace
             oldTexture
         );
 
-
         device->SetRenderState(
             D3DRS_ZENABLE,
             oldZEnable
         );
 
-
         if (oldTexture)
         {
             oldTexture->Release();
         }
-
 
         return result;
     }
@@ -1143,7 +1164,6 @@ bool InstallChamsHooks()
 {
     const std::uintptr_t gameBase =
         GetGameBase();
-
 
     if (!gameBase)
     {

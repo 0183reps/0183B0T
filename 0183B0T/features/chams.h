@@ -5,8 +5,8 @@
 enum class ChamsTarget : int
 {
     All = 0,
-    Axis = 1,
-    Allies = 2
+    Enemies = 1,
+    Friendlies = 2
 };
 
 struct ChamsColor
@@ -24,13 +24,7 @@ struct ChamsSettings
     ChamsTarget target =
         ChamsTarget::All;
 
-    // ON:
-    // hidden pass zonder depth-test + normale visible pass.
-    //
-    // OFF:
-    // alleen normale visible pass.
     bool wallHack = true;
-
     bool deadBodies = true;
 
     ChamsColor hiddenColor
