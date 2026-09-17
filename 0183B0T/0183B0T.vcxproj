@@ -156,6 +156,7 @@
   <ItemGroup>
     <ClInclude Include="core\input.h" />
     <ClInclude Include="core\renderer.h" />
+    <ClInclude Include="features\chams.h" />
     <ClInclude Include="features\fov.h" />
     <ClInclude Include="features\fps.h" />
     <ClInclude Include="features\players.h" />
@@ -167,6 +168,7 @@
     <ClCompile Include="core\input.cpp" />
     <ClCompile Include="core\renderer.cpp" />
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="features\chams.cpp" />
     <ClCompile Include="features\fov.cpp" />
     <ClCompile Include="features\fps.cpp" />
     <ClCompile Include="features\players.cpp" />

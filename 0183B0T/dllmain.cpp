@@ -4,6 +4,7 @@
 
 #include "core/input.h"
 #include "core/renderer.h"
+#include "features/chams.h"
 
 bool g_imguiInitialized = false;
 bool g_menuOpen = false;
@@ -24,6 +25,11 @@ DWORD WINAPI MainThread(
         return 0;
     }
 
+    if (!InstallChamsHooks())
+    {
+        return 0;
+    }
+
     if (!InstallMouseInputHook())
     {
         return 0;
@@ -34,9 +40,12 @@ DWORD WINAPI MainThread(
         return 0;
     }
 
-    if (MH_EnableHook(
-        MH_ALL_HOOKS
-    ) != MH_OK)
+    if (
+        MH_EnableHook(
+            MH_ALL_HOOKS
+        )
+        != MH_OK
+        )
     {
         return 0;
     }

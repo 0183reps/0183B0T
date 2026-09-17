@@ -3,9 +3,11 @@
 #include "imgui.h"
 
 #include "menu.h"
+
 #include "../features/fov.h"
 #include "../features/fps.h"
 #include "../features/players.h"
+#include "../features/chams.h"
 
 extern bool g_menuOpen;
 extern float g_fovValue;
@@ -107,6 +109,11 @@ void RenderMenu()
         ImGuiWindowFlags_NoCollapse
     );
 
+
+    // =========================================================
+    // FOV
+    // =========================================================
+
     ImGui::Text(
         "Field of View"
     );
@@ -117,13 +124,15 @@ void RenderMenu()
         220.0f
     );
 
-    if (ImGui::SliderFloat(
-        "##FOV",
-        &g_fovValue,
-        40.0f,
-        120.0f,
-        "%.1f"
-    ))
+    if (
+        ImGui::SliderFloat(
+            "##FOV",
+            &g_fovValue,
+            40.0f,
+            120.0f,
+            "%.1f"
+        )
+        )
     {
         SetFov(
             g_fovValue
@@ -132,15 +141,22 @@ void RenderMenu()
 
     ImGui::SameLine();
 
-    if (ImGui::Button(
-        "Reset##FOV"
-    ))
+    if (
+        ImGui::Button(
+            "Reset##FOV"
+        )
+        )
     {
         ResetFov();
 
         g_fovValue =
             65.0f;
     }
+
+
+    // =========================================================
+    // FPS
+    // =========================================================
 
     ImGui::Spacing();
 
@@ -168,11 +184,13 @@ void RenderMenu()
 
     ImGui::SameLine();
 
-    if (RepeatButton(
-        "-",
-        g_minusHoldTime,
-        g_minusRepeatTimer
-    ))
+    if (
+        RepeatButton(
+            "-",
+            g_minusHoldTime,
+            g_minusRepeatTimer
+        )
+        )
     {
         SetFpsLimit(
             fpsLimit - 1
@@ -188,13 +206,15 @@ void RenderMenu()
         80.0f
     );
 
-    if (ImGui::InputInt(
-        "##FPS",
-        &g_fpsInputValue,
-        0,
-        0,
-        ImGuiInputTextFlags_EnterReturnsTrue
-    ))
+    if (
+        ImGui::InputInt(
+            "##FPS",
+            &g_fpsInputValue,
+            0,
+            0,
+            ImGuiInputTextFlags_EnterReturnsTrue
+        )
+        )
     {
         SetFpsLimit(
             g_fpsInputValue
@@ -206,11 +226,13 @@ void RenderMenu()
 
     ImGui::SameLine();
 
-    if (RepeatButton(
-        "+",
-        g_plusHoldTime,
-        g_plusRepeatTimer
-    ))
+    if (
+        RepeatButton(
+            "+",
+            g_plusHoldTime,
+            g_plusRepeatTimer
+        )
+        )
     {
         SetFpsLimit(
             fpsLimit + 1
@@ -222,15 +244,159 @@ void RenderMenu()
 
     ImGui::SameLine();
 
-    if (ImGui::Button(
-        "Reset##FPS"
-    ))
+    if (
+        ImGui::Button(
+            "Reset##FPS"
+        )
+        )
     {
         ResetFpsLimit();
 
         g_fpsInputValue =
             GetFpsLimit();
     }
+
+
+    // =========================================================
+    // CHAMS
+    // =========================================================
+
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    ImGui::Text(
+        "Chams"
+    );
+
+
+    ChamsSettings& chams =
+        GetChamsSettings();
+
+
+    ImGui::Checkbox(
+        "Enabled##Chams",
+        &chams.enabled
+    );
+
+
+    ImGui::SameLine();
+
+
+    int target =
+        static_cast<int>(
+            chams.target
+            );
+
+
+    ImGui::SetNextItemWidth(
+        120.0f
+    );
+
+
+    if (
+        ImGui::Combo(
+            "Target##Chams",
+            &target,
+            "All\0Axis\0Allies\0"
+        )
+        )
+    {
+        chams.target =
+            static_cast<ChamsTarget>(
+                target
+                );
+    }
+
+
+    ImGui::SameLine();
+
+
+    // Exact requested name:
+    // "Wall Hack"
+    ImGui::Checkbox(
+        "Wall Hack##Chams",
+        &chams.wallHack
+    );
+
+
+    ImGui::SameLine();
+
+
+    ImGui::Checkbox(
+        "Dead bodies##Chams",
+        &chams.deadBodies
+    );
+
+
+    // ---------------------------------------------------------
+    // Colors
+    // ---------------------------------------------------------
+
+    float hiddenColor[4] =
+    {
+        chams.hiddenColor.r,
+        chams.hiddenColor.g,
+        chams.hiddenColor.b,
+        chams.hiddenColor.a
+    };
+
+
+    float visibleColor[4] =
+    {
+        chams.visibleColor.r,
+        chams.visibleColor.g,
+        chams.visibleColor.b,
+        chams.visibleColor.a
+    };
+
+
+    // Hidden color is only relevant when Wall Hack is enabled.
+    if (chams.wallHack)
+    {
+        if (
+            ImGui::ColorEdit4(
+                "Hidden##Chams",
+                hiddenColor,
+                ImGuiColorEditFlags_NoInputs
+            )
+            )
+        {
+            chams.hiddenColor =
+            {
+                hiddenColor[0],
+                hiddenColor[1],
+                hiddenColor[2],
+                hiddenColor[3]
+            };
+        }
+
+
+        ImGui::SameLine();
+    }
+
+
+    if (
+        ImGui::ColorEdit4(
+            "Visible##Chams",
+            visibleColor,
+            ImGuiColorEditFlags_NoInputs
+        )
+        )
+    {
+        chams.visibleColor =
+        {
+            visibleColor[0],
+            visibleColor[1],
+            visibleColor[2],
+            visibleColor[3]
+        };
+    }
+
+
+    // =========================================================
+    // PLAYERS
+    // =========================================================
 
     ImGui::Spacing();
     ImGui::Separator();
@@ -240,11 +406,14 @@ void RenderMenu()
         "Players"
     );
 
+
     const std::vector<PlayerInfo> players =
         GetPlayers();
 
+
     int activePlayerCount =
         0;
+
 
     for (const PlayerInfo& player : players)
     {
@@ -254,20 +423,25 @@ void RenderMenu()
         }
     }
 
+
     ImGui::Text(
         "Active players: %d / 18",
         activePlayerCount
     );
 
+
     ImGui::Spacing();
 
-    if (ImGui::BeginTable(
-        "PlayersTable",
-        4,
-        ImGuiTableFlags_Borders |
-        ImGuiTableFlags_RowBg |
-        ImGuiTableFlags_SizingStretchProp
-    ))
+
+    if (
+        ImGui::BeginTable(
+            "PlayersTable",
+            4,
+            ImGuiTableFlags_Borders |
+            ImGuiTableFlags_RowBg |
+            ImGuiTableFlags_SizingStretchProp
+        )
+        )
     {
         ImGui::TableSetupColumn(
             "Slot",
@@ -275,19 +449,24 @@ void RenderMenu()
             50.0f
         );
 
+
         ImGui::TableSetupColumn(
             "Name"
         );
+
 
         ImGui::TableSetupColumn(
             "IP"
         );
 
+
         ImGui::TableSetupColumn(
             "Steam ID"
         );
 
+
         ImGui::TableHeadersRow();
+
 
         for (const PlayerInfo& player : players)
         {
@@ -296,36 +475,45 @@ void RenderMenu()
                 continue;
             }
 
+
             ImGui::TableNextRow();
+
 
             ImGui::TableSetColumnIndex(
                 0
             );
+
 
             ImGui::Text(
                 "%d",
                 player.slot
             );
 
+
             ImGui::TableSetColumnIndex(
                 1
             );
+
 
             ImGui::TextUnformatted(
                 player.name.c_str()
             );
 
+
             ImGui::TableSetColumnIndex(
                 2
             );
+
 
             ImGui::TextUnformatted(
                 player.ip.c_str()
             );
 
+
             ImGui::TableSetColumnIndex(
                 3
             );
+
 
             if (player.steamId == 0)
             {
@@ -344,8 +532,10 @@ void RenderMenu()
             }
         }
 
+
         ImGui::EndTable();
     }
+
 
     if (activePlayerCount == 0)
     {
@@ -354,13 +544,16 @@ void RenderMenu()
         );
     }
 
+
     ImGui::Spacing();
     ImGui::Separator();
     ImGui::Spacing();
 
+
     ImGui::TextDisabled(
         "INSERT | Toggle menu"
     );
+
 
     ImGui::End();
 }
