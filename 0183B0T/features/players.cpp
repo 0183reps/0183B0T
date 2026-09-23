@@ -49,13 +49,20 @@ namespace
 
 
     // =========================================================
+    // Local Steam identity
+    // =========================================================
+
+    constexpr std::uintptr_t kGetLocalSteamIdRva = 0x2D3FB0;
+
+
+    // =========================================================
     // gameSession
     //
-    // qword_142CBD2D0 is the gameSession object.
+    // qword_142CBD2D0
     //
     // member:
-    //   session + 0x68 + clientIndex * 0x40 = registered
-    //   session + 0x70 + clientIndex * 0x40 = identifier
+    //   session + 0x68 + index * 0x40 = registered
+    //   session + 0x70 + index * 0x40 = identifier
     // =========================================================
 
     constexpr std::uintptr_t kGameSessionRva = 0x2CBD2D0;
@@ -68,21 +75,40 @@ namespace
 
 
     // =========================================================
-    // Host
+    // Session lookup / Host
     //
-    // sub_1400E9490(clientNum)
+    // sub_140260750(&gameSession, identifier)
+    //   -> exact session member index
+    //
+    // sub_1400E9490(sessionIndex)
+    //   -> game's own host check
+    //
+    // player +0x110 is proven to contain the same identifier
+    // accepted by sub_140260750.
     // =========================================================
 
+    constexpr std::uintptr_t kFindSessionIndexRva = 0x260750;
     constexpr std::uintptr_t kIsHostRva = 0xE9490;
 
 
     // =========================================================
+    // TEMP host debugging
+    //
+    // sub_1400E9490 searches this 0x148 table by identifier,
+    // then compares the resulting index against:
+    //
+    // dword_14160FDDC
+    // =========================================================
+
+    constexpr std::uintptr_t kOnlineMembersRva = 0x160E018;
+    constexpr std::uintptr_t kOnlineMemberStride = 0x148;
+    constexpr std::uintptr_t kOnlineIdentifierOffset = 0x110;
+
+    constexpr std::uintptr_t kHostOnlineIndexRva = 0x160FDDC;
+
+
+    // =========================================================
     // SteamFriends013
-    //
-    // +0x28 = GetFriendRelationship
-    // vtable index = 0x28 / 8 = 5
-    //
-    // k_EFriendRelationshipFriend = 3
     // =========================================================
 
     constexpr std::size_t kGetFriendRelationshipIndex = 5;
@@ -124,6 +150,31 @@ namespace
 
 
     // =========================================================
+    // Local Steam identity
+    // =========================================================
+
+    std::uint64_t GetLocalSteamId(
+        const std::uintptr_t moduleBase
+    )
+    {
+        if (moduleBase == 0)
+        {
+            return 0;
+        }
+
+        using GetLocalSteamIdFn =
+            std::uint64_t(__fastcall*)();
+
+        const auto getLocalSteamId =
+            reinterpret_cast<GetLocalSteamIdFn>(
+                moduleBase + kGetLocalSteamIdRva
+                );
+
+        return getLocalSteamId();
+    }
+
+
+    // =========================================================
     // Team
     // =========================================================
 
@@ -152,13 +203,7 @@ namespace
 
 
     // =========================================================
-    // Player slot -> entity -> clientIndex
-    //
-    // Runtime verified:
-    // slot 0 -> client 0
-    // slot 1 -> client 1
-    // slot 4 -> client 4
-    // etc.
+    // Player slot -> entity -> gameplay clientIndex
     // =========================================================
 
     int FindClientIndexForSlot(
@@ -228,12 +273,12 @@ namespace
 
     std::uintptr_t GetSessionMemberAddress(
         const std::uintptr_t moduleBase,
-        const int clientIndex
+        const int sessionIndex
     )
     {
         if (
-            clientIndex < 0 ||
-            clientIndex >= kMaxPlayers
+            sessionIndex < 0 ||
+            sessionIndex >= kMaxPlayers
             )
         {
             return 0;
@@ -246,7 +291,7 @@ namespace
             gameSession +
             kSessionMemberBaseOffset +
             (
-                static_cast<std::uintptr_t>(clientIndex) *
+                static_cast<std::uintptr_t>(sessionIndex) *
                 kSessionMemberStride
                 );
     }
@@ -254,13 +299,13 @@ namespace
 
     bool IsSessionMemberRegistered(
         const std::uintptr_t moduleBase,
-        const int clientIndex
+        const int sessionIndex
     )
     {
         const std::uintptr_t member =
             GetSessionMemberAddress(
                 moduleBase,
-                clientIndex
+                sessionIndex
             );
 
         if (member == 0)
@@ -277,13 +322,13 @@ namespace
 
     std::uint64_t GetSessionIdentifier(
         const std::uintptr_t moduleBase,
-        const int clientIndex
+        const int sessionIndex
     )
     {
         const std::uintptr_t member =
             GetSessionMemberAddress(
                 moduleBase,
-                clientIndex
+                sessionIndex
             );
 
         if (member == 0)
@@ -293,7 +338,7 @@ namespace
 
         if (!IsSessionMemberRegistered(
             moduleBase,
-            clientIndex
+            sessionIndex
         ))
         {
             return 0;
@@ -307,17 +352,138 @@ namespace
 
 
     // =========================================================
-    // Host
+    // Player identifier -> gameSession member index
+    //
+    // sub_140260750(&gameSession, identifier)
+    //
+    // Returns 0..17 when found.
+    // Returns 0xFFFFFFFF when not found.
     // =========================================================
 
-    bool IsClientHost(
+    int FindSessionIndexByIdentifier(
         const std::uintptr_t moduleBase,
-        const int clientIndex
+        const std::uint64_t identifier
     )
     {
         if (
-            clientIndex < 0 ||
-            clientIndex >= kMaxPlayers
+            moduleBase == 0 ||
+            identifier == 0
+            )
+        {
+            return -1;
+        }
+
+        using FindSessionIndexFn =
+            unsigned int(__fastcall*)(
+                std::uintptr_t gameSession,
+                std::uint64_t identifier
+                );
+
+        const auto findSessionIndex =
+            reinterpret_cast<FindSessionIndexFn>(
+                moduleBase + kFindSessionIndexRva
+                );
+
+        const unsigned int sessionIndex =
+            findSessionIndex(
+                moduleBase + kGameSessionRva,
+                identifier
+            );
+
+        if (
+            sessionIndex >=
+            static_cast<unsigned int>(kMaxPlayers)
+            )
+        {
+            return -1;
+        }
+
+        return static_cast<int>(
+            sessionIndex
+            );
+    }
+
+
+    // =========================================================
+    // TEMP DEBUG:
+    // Identifier -> online 0x148 table index
+    //
+    // This mirrors the lookup performed inside sub_1400E9490.
+    // =========================================================
+
+    int FindOnlineIndexByIdentifier(
+        const std::uintptr_t moduleBase,
+        const std::uint64_t identifier
+    )
+    {
+        if (
+            moduleBase == 0 ||
+            identifier == 0
+            )
+        {
+            return -1;
+        }
+
+        const std::uintptr_t onlineMembers =
+            moduleBase + kOnlineMembersRva;
+
+        for (
+            int index = 0;
+            index < kMaxPlayers;
+            ++index
+            )
+        {
+            const std::uintptr_t member =
+                onlineMembers +
+                (
+                    static_cast<std::uintptr_t>(index) *
+                    kOnlineMemberStride
+                    );
+
+            const std::uint8_t status =
+                *reinterpret_cast<const std::uint8_t*>(
+                    member
+                    );
+
+            // First validity condition from sub_1400E9490:
+            //
+            // test byte ptr [entry], 0FDh
+            //
+            // The identifier comparison is reached when this
+            // test is non-zero.
+
+            if ((status & 0xFD) == 0)
+            {
+                continue;
+            }
+
+            const std::uint64_t memberIdentifier =
+                *reinterpret_cast<const std::uint64_t*>(
+                    member + kOnlineIdentifierOffset
+                    );
+
+            if (memberIdentifier == identifier)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+
+    // =========================================================
+    // Host
+    // =========================================================
+
+    bool IsSessionClientHost(
+        const std::uintptr_t moduleBase,
+        const int sessionIndex
+    )
+    {
+        if (
+            sessionIndex < 0 ||
+            sessionIndex >= kMaxPlayers
             )
         {
             return false;
@@ -325,7 +491,7 @@ namespace
 
         if (!IsSessionMemberRegistered(
             moduleBase,
-            clientIndex
+            sessionIndex
         ))
         {
             return false;
@@ -333,7 +499,7 @@ namespace
 
         using IsHostFn =
             int(__fastcall*)(
-                unsigned int clientNum
+                unsigned int sessionClientNum
                 );
 
         const auto isHost =
@@ -343,7 +509,7 @@ namespace
 
         return
             isHost(
-                static_cast<unsigned int>(clientIndex)
+                static_cast<unsigned int>(sessionIndex)
             ) != 0;
     }
 
@@ -461,7 +627,7 @@ std::vector<PlayerInfo> GetPlayers()
 
 
     // ---------------------------------------------------------
-    // Local player
+    // Local gameplay state
     // ---------------------------------------------------------
 
     const int localClientIndex =
@@ -473,6 +639,16 @@ std::vector<PlayerInfo> GetPlayers()
         GetTeam(
             moduleBase,
             localClientIndex
+        );
+
+
+    // ---------------------------------------------------------
+    // Local identity
+    // ---------------------------------------------------------
+
+    const std::uint64_t localSteamId =
+        GetLocalSteamId(
+            moduleBase
         );
 
 
@@ -557,7 +733,7 @@ std::vector<PlayerInfo> GetPlayers()
 
 
         // -----------------------------------------------------
-        // Existing member data
+        // Existing player-table data
         // -----------------------------------------------------
 
         player.name =
@@ -580,7 +756,7 @@ std::vector<PlayerInfo> GetPlayers()
 
 
         // -----------------------------------------------------
-        // Entity -> client
+        // Entity -> gameplay client
         // -----------------------------------------------------
 
         player.clientIndex =
@@ -588,6 +764,98 @@ std::vector<PlayerInfo> GetPlayers()
                 moduleBase,
                 slot
             );
+
+
+        // -----------------------------------------------------
+        // Existing session identity
+        //
+        // Kept unchanged for [You] / [FRIEND].
+        // -----------------------------------------------------
+
+        const std::uint64_t sessionSteamId =
+            GetSessionIdentifier(
+                moduleBase,
+                slot
+            );
+
+
+        // -----------------------------------------------------
+        // You
+        // -----------------------------------------------------
+
+        player.isLocal =
+            localSteamId != 0 &&
+            sessionSteamId != 0 &&
+            sessionSteamId == localSteamId;
+
+
+        // -----------------------------------------------------
+        // Host + temporary debugging
+        //
+        // S = gameSession index resolved from player +0x110
+        // O = online 0x148 table index
+        // H = dword_14160FDDC
+        // R = result returned by sub_1400E9490
+        // -----------------------------------------------------
+
+        const int hostSessionIndex =
+            FindSessionIndexByIdentifier(
+                moduleBase,
+                player.steamId
+            );
+
+        const int onlineIndex =
+            FindOnlineIndexByIdentifier(
+                moduleBase,
+                player.steamId
+            );
+
+        const int hostOnlineIndex =
+            *reinterpret_cast<const int*>(
+                moduleBase + kHostOnlineIndexRva
+                );
+
+        player.isHost =
+            hostSessionIndex >= 0 &&
+            IsSessionClientHost(
+                moduleBase,
+                hostSessionIndex
+            );
+
+
+        // -----------------------------------------------------
+        // TEMPORARY visible host diagnostics
+        // -----------------------------------------------------
+
+        char hostDebug[128]{};
+
+        std::snprintf(
+            hostDebug,
+            sizeof(hostDebug),
+            " [DBG S=%d O=%d H=%d R=%d]",
+            hostSessionIndex,
+            onlineIndex,
+            hostOnlineIndex,
+            player.isHost ? 1 : 0
+        );
+
+        player.name += hostDebug;
+
+
+        // -----------------------------------------------------
+        // Friend
+        // -----------------------------------------------------
+
+        player.isFriend =
+            IsSteamFriend(
+                steamFriends,
+                sessionSteamId
+            );
+
+
+        // -----------------------------------------------------
+        // No gameplay entity yet
+        // -----------------------------------------------------
 
         if (player.clientIndex < 0)
         {
@@ -611,15 +879,6 @@ std::vector<PlayerInfo> GetPlayers()
 
 
         // -----------------------------------------------------
-        // You
-        // -----------------------------------------------------
-
-        player.isLocal =
-            player.clientIndex ==
-            localClientIndex;
-
-
-        // -----------------------------------------------------
         // Friendly / enemy
         // -----------------------------------------------------
 
@@ -629,41 +888,11 @@ std::vector<PlayerInfo> GetPlayers()
             player.team == localTeam;
 
 
-        // -----------------------------------------------------
-        // Host
-        // -----------------------------------------------------
-
-        player.isHost =
-            IsClientHost(
-                moduleBase,
-                player.clientIndex
-            );
-
-
-        // -----------------------------------------------------
-        // Friend
-        //
-        // Use the proven session identifier rather than assuming
-        // the old member-table Steam ID is the SteamFriends ID.
-        // -----------------------------------------------------
-
-        const std::uint64_t sessionSteamId =
-            GetSessionIdentifier(
-                moduleBase,
-                player.clientIndex
-            );
-
-        player.isFriend =
-            IsSteamFriend(
-                steamFriends,
-                sessionSteamId
-            );
-
-
         players.push_back(
             player
         );
     }
+
 
     return players;
 }
