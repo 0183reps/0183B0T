@@ -108,6 +108,18 @@ namespace
 
 
     // =========================================================
+    // Confirmed current host slot
+    //
+    // iw5mp.exe + 0x1608E3C
+    //
+    // Contains the current party slot (0..17) of the host.
+    // Confirmed in-game, including host changes.
+    // =========================================================
+
+    constexpr std::uintptr_t kHostSlotRva = 0x1608E3C;
+
+
+    // =========================================================
     // SteamFriends013
     // =========================================================
 
@@ -790,56 +802,23 @@ std::vector<PlayerInfo> GetPlayers()
 
 
         // -----------------------------------------------------
-        // Host + temporary debugging
+        // Host
         //
-        // S = gameSession index resolved from player +0x110
-        // O = online 0x148 table index
-        // H = dword_14160FDDC
-        // R = result returned by sub_1400E9490
+        // iw5mp.exe + 0x1608E3C contains the current host
+        // party slot (0..17).
+        //
+        // This only sets the already-existing isHost flag.
+        // Existing [You] and [FRIEND] logic remains separate.
         // -----------------------------------------------------
 
-        const int hostSessionIndex =
-            FindSessionIndexByIdentifier(
-                moduleBase,
-                player.steamId
-            );
-
-        const int onlineIndex =
-            FindOnlineIndexByIdentifier(
-                moduleBase,
-                player.steamId
-            );
-
-        const int hostOnlineIndex =
-            *reinterpret_cast<const int*>(
-                moduleBase + kHostOnlineIndexRva
+        const unsigned int hostSlot =
+            *reinterpret_cast<const unsigned int*>(
+                moduleBase + kHostSlotRva
                 );
 
         player.isHost =
-            hostSessionIndex >= 0 &&
-            IsSessionClientHost(
-                moduleBase,
-                hostSessionIndex
-            );
-
-
-        // -----------------------------------------------------
-        // TEMPORARY visible host diagnostics
-        // -----------------------------------------------------
-
-        char hostDebug[128]{};
-
-        std::snprintf(
-            hostDebug,
-            sizeof(hostDebug),
-            " [DBG S=%d O=%d H=%d R=%d]",
-            hostSessionIndex,
-            onlineIndex,
-            hostOnlineIndex,
-            player.isHost ? 1 : 0
-        );
-
-        player.name += hostDebug;
+            hostSlot < static_cast<unsigned int>(kMaxPlayers) &&
+            slot == static_cast<int>(hostSlot);
 
 
         // -----------------------------------------------------
